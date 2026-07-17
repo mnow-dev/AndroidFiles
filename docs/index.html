@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AndroidFiles — fast Android backups for Windows</title>
+<meta name="description" content="Back up your Android phone to Windows over ADB — several times faster than MTP, incremental, verified, with snapshots and an Explorer drive.">
+<style>
+  :root {
+    --bg: #f7f8f9; --fg: #1a1d20; --muted: #5c6670; --card: #ffffff;
+    --accent: #14833b; --accent-fg: #ffffff; --border: #e2e6ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191c; --fg: #e8eaec; --muted: #9aa4ad; --card: #1f2428;
+      --accent: #3ddc84; --accent-fg: #08240f; --border: #2c3338;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 16px/1.6 "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 72px 0 40px; text-align: center; }
+  h1 { font-size: 44px; letter-spacing: -1px; }
+  h1 .accent { color: var(--accent); }
+  .tagline { font-size: 20px; color: var(--muted); margin: 12px auto 28px; max-width: 620px; }
+  .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 26px; border-radius: 8px;
+    text-decoration: none; font-weight: 600; border: 1px solid var(--border);
+    color: var(--fg); background: var(--card);
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+  .btn:hover { filter: brightness(1.05); }
+  .fineprint { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  .shot { display: block; width: 100%; border-radius: 12px; border: 1px solid var(--border);
+          box-shadow: 0 24px 60px rgba(0,0,0,.18); margin: 36px 0 56px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+          gap: 16px; margin-bottom: 64px; }
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: 12px; padding: 20px; }
+  .card h3 { font-size: 17px; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 14.5px; }
+  footer { border-top: 1px solid var(--border); padding: 28px 0 48px;
+           color: var(--muted); font-size: 14px; text-align: center; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Android<span class="accent">Files</span></h1>
+    <p class="tagline">Back up your Android phone to Windows over ADB —
+    several times faster than MTP, incremental, and verified.</p>
+    <div class="buttons">
+      <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download for Windows</a>
+      <a class="btn" href="https://github.com/mnow-dev/AndroidFiles">View on GitHub</a>
+    </div>
+    <p class="fineprint">Free &amp; open source (MIT) · Windows 10/11 x64 · portable, no installer</p>
+  </header>
+
+  <img class="shot" src="screenshot.png" alt="AndroidFiles main window: folder tree of a connected Pixel, backup options, and queue">
+
+  <div class="grid">
+    <div class="card"><h3>⚡ Streamed, not stuttered</h3>
+      <p>Folders leave the phone as one continuous tar stream — no per-file
+      round-trips, so big folders transfer at full USB speed where MTP crawls.</p></div>
+    <div class="card"><h3>♻️ Incremental</h3>
+      <p>Re-runs move only what changed. An untouched 50&nbsp;GB photo library
+      re-verifies in seconds and transfers 0 bytes.</p></div>
+    <div class="card"><h3>🕘 Snapshots</h3>
+      <p>Keep a dated folder per run — unchanged files are hardlinked, so
+      months of history cost almost no extra disk.</p></div>
+    <div class="card"><h3>✅ Verified</h3>
+      <p>File counts are checked after every run, and a deep-verify mode
+      compares md5 of every file on both sides.</p></div>
+    <div class="card"><h3>🗂️ Explorer drive</h3>
+      <p>Mount the phone as a real drive letter and browse it in Explorer
+      (via WinFsp) — read-only by default, writable if you opt in.</p></div>
+    <div class="card"><h3>📶 Wireless &amp; scheduled</h3>
+      <p>Pair by scanning a QR code, reconnect automatically, and schedule
+      daily backups that run themselves and toast when done.</p></div>
+  </div>
+
+  <footer>
+    MIT licensed · <a href="https://github.com/mnow-dev/AndroidFiles">Source on GitHub</a> ·
+    Releases are currently unsigned — if donations cover a code-signing
+    certificate, they'll be signed. UI built with fluent_ui; drive powered by
+    <a href="https://winfsp.dev">WinFsp</a>.
+  </footer>
+</div>
+</body>
+</html>

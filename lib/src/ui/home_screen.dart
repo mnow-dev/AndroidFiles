@@ -1,0 +1,310 @@
+import 'package:fluent_ui/fluent_ui.dart';
+
+import '../app_controller.dart';
+import '../update_checker.dart';
+import 'dialogs.dart';
+import 'queue_panel.dart';
+import 'tree_panel.dart';
+
+class HomeScreen extends StatefulWidget {
+  final AppController app;
+
+  const HomeScreen({super.key, required this.app});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  AppController get app => widget.app;
+  late double _split = app.settings.splitRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: app,
+      builder: (context, _) => ScaffoldPage(
+        padding: EdgeInsets.zero,
+        header: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              // The title is the only flex member: it absorbs all slack (and
+              // fades when tight), keeping the controls hard-right.
+              Expanded(
+                child: Text(
+                  'AndroidFiles',
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: FluentTheme.of(context).typography.subtitle,
+                ),
+              ),
+              _DevicePicker(app: app),
+              Tooltip(
+                message: 'Refresh file list',
+                child: IconButton(
+                  icon: const Icon(FluentIcons.refresh, size: 16),
+                  onPressed: app.selected == null ? null : app.refreshTree,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: app.drive.mounted
+                    ? 'Unmount ${app.drive.mountPoint} drive'
+                    : 'Mount phone as ${app.drive.mountPoint} in Explorer',
+                child: IconButton(
+                  icon: Icon(
+                    FluentIcons.hard_drive,
+                    size: 16,
+                    color: app.drive.mounted
+                        ? (app.settings.driveWritable
+                              ? Colors.orange
+                              : Colors.green)
+                        : null,
+                  ),
+                  onPressed: app.drive.mounted || app.selected != null
+                      ? app.toggleDrive
+                      : null,
+                ),
+              ),
+              Tooltip(
+                message: 'Wireless debugging (QR pair / connect)',
+                child: IconButton(
+                  icon: const Icon(FluentIcons.wifi, size: 16),
+                  onPressed: () => showWifiDialog(context, app),
+                ),
+              ),
+              Tooltip(
+                message: app.showLog ? 'Hide log' : 'Show log',
+                child: IconButton(
+                  icon: Icon(
+                    FluentIcons.command_prompt,
+                    size: 16,
+                    color: app.showLog
+                        ? FluentTheme.of(context).accentColor
+                        : null,
+                  ),
+                  onPressed: () => app.showLog = !app.showLog,
+                ),
+              ),
+              Tooltip(
+                message: 'Settings',
+                child: IconButton(
+                  icon: const Icon(FluentIcons.settings, size: 16),
+                  onPressed: () => showSettingsDialog(context, app),
+                ),
+              ),
+            ],
+          ),
+        ),
+        content: Column(
+          children: [
+            if (app.update != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: InfoBar(
+                  title: Text('Version ${app.update!.version} is available'),
+                  content: app.updateProgress != null
+                      ? Text('Downloading… ${app.updateProgress}%')
+                      : const Text("You're running $appVersion."),
+                  severity: InfoBarSeverity.info,
+                  // No dismiss once an install is under way.
+                  onClose: app.updateProgress != null ? null : app.dismissUpdate,
+                  action: app.updateProgress != null
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: ProgressRing(strokeWidth: 3),
+                        )
+                      : Button(
+                          onPressed: app.installUpdate,
+                          child: const Text('Update'),
+                        ),
+                ),
+              ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final total = constraints.maxWidth;
+                  final leftWidth = (total * _split).clamp(
+                    200.0,
+                    (total - 340).clamp(200.0, total),
+                  );
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: leftWidth,
+                        child: TreePanel(app: app),
+                      ),
+                      _SplitHandle(
+                        onDrag: (dx) => setState(
+                          () => _split = ((leftWidth + dx) / total).clamp(
+                            0.15,
+                            0.85,
+                          ),
+                        ),
+                        onDragEnd: () {
+                          app.settings.splitRatio = _split;
+                          app.settings.save();
+                        },
+                      ),
+                      Expanded(child: QueuePanel(app: app)),
+                    ],
+                  );
+                },
+              ),
+            ),
+            if (app.showLog) _LogPane(app: app),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Draggable vertical divider between the tree and the queue.
+class _SplitHandle extends StatelessWidget {
+  final void Function(double dx) onDrag;
+  final VoidCallback onDragEnd;
+
+  const _SplitHandle({required this.onDrag, required this.onDragEnd});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (d) => onDrag(d.delta.dx),
+        onHorizontalDragEnd: (_) => onDragEnd(),
+        child: SizedBox(
+          width: 8,
+          child: Center(
+            child: Container(
+              width: 1,
+              color: FluentTheme.of(
+                context,
+              ).resources.dividerStrokeColorDefault,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DevicePicker extends StatelessWidget {
+  final AppController app;
+  const _DevicePicker({required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    final caption = FluentTheme.of(context).typography.caption?.copyWith(
+      color: FluentTheme.of(context).resources.textFillColorSecondary,
+    );
+    if (app.devices.isEmpty) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(FluentIcons.plug_disconnected, size: 16),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              'No device — plug in via USB or use the Wi-Fi button',
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: caption,
+            ),
+          ),
+        ],
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          app.selected?.serial.contains(':') ?? false
+              ? FluentIcons.wifi
+              : FluentIcons.cell_phone,
+          size: 16,
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            'Device',
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            style: caption,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 4,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: ComboBox<String>(
+              value: app.selected?.serial,
+              placeholder: const Text('Select device'),
+              isExpanded: true,
+              items: [
+                for (final d in app.devices)
+                  ComboBoxItem(
+                    value: d.serial,
+                    enabled: d.isReady,
+                    child: Row(
+                      children: [
+                        Icon(
+                          d.isWireless ? FluentIcons.wifi : FluentIcons.usb,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            d.isReady
+                                ? (d.model.isEmpty ? d.serial : d.model)
+                                : '${d.model.isEmpty ? d.serial : d.model} — ${d.state}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+              onChanged: (serial) {
+                final d = app.devices
+                    .where((d) => d.serial == serial)
+                    .firstOrNull;
+                if (d != null && d.isReady) app.selectDevice(d);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LogPane extends StatelessWidget {
+  final AppController app;
+  const _LogPane({required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 110,
+      child: Container(
+        width: double.infinity,
+        color: FluentTheme.of(context).resources.solidBackgroundFillColorBase,
+        padding: const EdgeInsets.all(8),
+        child: ListView.builder(
+          reverse: true,
+          itemCount: app.logLines.length,
+          itemBuilder: (_, i) => Text(
+            app.logLines[app.logLines.length - 1 - i],
+            style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
+          ),
+        ),
+      ),
+    );
+  }
+}

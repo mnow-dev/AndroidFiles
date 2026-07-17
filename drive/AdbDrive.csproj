@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>AdbDrive</RootNamespace>
+    <AssemblyName>AdbDrive</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- winfsp-msil.dll targets .NET Framework; it works fine on modern .NET
+         (pure IL + P/Invoke into winfsp-x64.dll) but triggers a framework
+         compatibility warning we suppress here. -->
+    <NoWarn>$(NoWarn);NU1701;MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Official WinFsp .NET binding installed by the WinFsp installer. -->
+    <Reference Include="winfsp-msil">
+      <HintPath>C:\Program Files (x86)\WinFsp\bin\winfsp-msil.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

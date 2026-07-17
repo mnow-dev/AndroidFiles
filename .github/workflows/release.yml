@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install WinFsp (provides the .NET binding DLL)
+        run: choco install winfsp -y
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build windows --release
+      - run: dotnet publish drive -c Release -o drive/publish
+
+      # Self-contained: the updater must run even where the .NET runtime isn't
+      # installed. Requiring the runtime as a Velopack prerequisite would make
+      # Setup install it machine-wide and raise a UAC prompt — the opposite of
+      # the per-user, no-elevation install this whole approach is for.
+      - name: Publish the updater helper
+        run: >
+          dotnet publish updater -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -o updater/publish
+
+      - name: Assemble the package directory
+        shell: pwsh
+        run: |
+          $dir = "pack"
+          New-Item -ItemType Directory $dir | Out-Null
+          Copy-Item -Recurse build/windows/x64/runner/Release/* $dir/
+          New-Item -ItemType Directory $dir/drive | Out-Null
+          Copy-Item drive/publish/* $dir/drive/
+          Copy-Item updater/publish/AndroidFilesUpdater.exe $dir/
+          Copy-Item README.md, LICENSE, CHANGELOG.md $dir/
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          # The global-tools dir isn't guaranteed on PATH within this job.
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -Append $env:GITHUB_PATH
+
+      # Pull the previous release so pack can compute a delta against it. There
+      # is nothing to fetch on the first Velopack release, which is not a
+      # failure — carry on and ship a full package.
+      - name: Fetch previous release for delta
+        continue-on-error: true
+        run: >
+          vpk download github
+          --repoUrl https://github.com/mnow-dev/AndroidFiles
+          --token ${{ github.token }}
+
+      - name: Pack with Velopack
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}" -replace '^v', ''  # Velopack wants bare semver
+          vpk pack `
+            --packId AndroidFiles `
+            --packVersion $v `
+            --packTitle AndroidFiles `
+            --packAuthors "mnow.dev" `
+            --packDir pack `
+            --mainExe android_files.exe `
+            --icon windows/runner/resources/app_icon.ico
+
+      # Keep shipping the portable ZIP alongside Setup.exe for a while: existing
+      # ZIP users have no automatic path into the Velopack install.
+      - name: Build the portable ZIP
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}"
+          $zip = "AndroidFiles-$v-windows-x64.zip"
+          Compress-Archive -Path pack/* -DestinationPath $zip
+          Get-FileHash $zip -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $zip" } | Set-Content "$zip.sha256"
+
+      # Velopack creates and publishes the release (Setup.exe, the .nupkg
+      # packages, and the RELEASES manifest the updater reads).
+      - name: Publish Velopack release
+        run: >
+          vpk upload github
+          --repoUrl https://github.com/mnow-dev/AndroidFiles
+          --token ${{ github.token }}
+          --publish --merge
+          --releaseName "AndroidFiles ${{ github.ref_name }}"
+          --tag ${{ github.ref_name }}
+
+      - name: Attach the portable ZIP to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}"
+          gh release upload $v `
+            "AndroidFiles-$v-windows-x64.zip" `
+            "AndroidFiles-$v-windows-x64.zip.sha256" `
+            --clobber
