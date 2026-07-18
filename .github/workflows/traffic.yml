@@ -1,0 +1,82 @@
+name: Traffic snapshot
+
+# GitHub only keeps 14 days of view/clone traffic. This runs weekly and merges
+# the daily numbers into files in the repo so the history is kept for good.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect and merge traffic
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p traffic
+          gh api "repos/$REPO/traffic/views"  > /tmp/views.json
+          gh api "repos/$REPO/traffic/clones" > /tmp/clones.json
+          gh api "repos/$REPO/releases" --paginate > /tmp/releases.json
+
+          python3 - <<'PY'
+          import json, os, datetime
+
+          def merge(daily_file, api_file, key):
+              # api_file has a "<key>" array of {timestamp, count, uniques}.
+              store = {}
+              if os.path.exists(daily_file):
+                  store = json.load(open(daily_file))
+              api = json.load(open(api_file))
+              for row in api.get(key, []):
+                  day = row["timestamp"][:10]  # YYYY-MM-DD
+                  # Overwrite the same day with the latest reading; a completed
+                  # day's number is stable, and the 14-day window (> weekly
+                  # cadence) guarantees every day is seen at least once.
+                  store[day] = {"count": row["count"], "uniques": row["uniques"]}
+              out = dict(sorted(store.items()))
+              json.dump(out, open(daily_file, "w"), indent=1)
+              print(f"{daily_file}: {len(out)} day(s)")
+
+          merge("traffic/views.json",  "/tmp/views.json",  "views")
+          merge("traffic/clones.json", "/tmp/clones.json", "clones")
+
+          # Release downloads are cumulative and permanent; snapshot the running
+          # total (across every release asset) once per run so growth is charted.
+          releases = json.load(open("/tmp/releases.json"))
+          total = sum(a["download_count"] for r in releases for a in r["assets"])
+          today = datetime.date.today().isoformat()
+          csv = "traffic/downloads.csv"
+          rows = {}
+          if os.path.exists(csv):
+              for line in open(csv):
+                  line = line.strip()
+                  if line and not line.startswith("date"):
+                      d, t = line.split(",")
+                      rows[d] = t
+          rows[today] = str(total)
+          with open(csv, "w") as f:
+              f.write("date,total_downloads\n")
+              for d in sorted(rows):
+                  f.write(f"{d},{rows[d]}\n")
+          print(f"downloads total today: {total}")
+          PY
+
+      - name: Commit if changed
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add traffic/
+          if git diff --cached --quiet; then
+            echo "no traffic changes"
+          else
+            git commit -m "Traffic snapshot $(date -u +%Y-%m-%d)"
+            git push
+          fi
