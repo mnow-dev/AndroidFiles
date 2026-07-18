@@ -72,6 +72,10 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ github.ref_name }}" -replace '^v', ''  # Velopack wants bare semver
+          # --noPortable: skip vpk's own generic portable bundle (it includes
+          # the updater). We ship our own versioned, updater-free ZIP below, so
+          # this leaves exactly one portable download — and, unlike deleting the
+          # file, vpk's upload manifest never references it, so upload succeeds.
           vpk pack `
             --packId AndroidFiles `
             --packVersion $v `
@@ -79,11 +83,8 @@ jobs:
             --packAuthors "mnow.dev" `
             --packDir pack `
             --mainExe android_files.exe `
-            --icon windows/runner/resources/app_icon.ico
-          # vpk also emits its own generic *-Portable.zip (with the updater in
-          # it). We ship our own versioned, updater-free portable ZIP below, so
-          # drop Velopack's to avoid two confusing portable downloads.
-          Remove-Item Releases/*-Portable.zip -ErrorAction SilentlyContinue
+            --icon windows/runner/resources/app_icon.ico `
+            --noPortable
 
       # Keep shipping a portable ZIP alongside Setup.exe: existing ZIP users
       # have no automatic path into the Velopack install. It omits the updater
