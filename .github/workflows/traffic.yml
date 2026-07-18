@@ -18,12 +18,22 @@ jobs:
 
       - name: Collect and merge traffic
         env:
+          # Views/clones need a PAT: the built-in GITHUB_TOKEN is blocked from
+          # the traffic API ("Resource not accessible by integration"). Create a
+          # fine-grained PAT with this repo's Administration: read permission and
+          # save it as the TRAFFIC_TOKEN secret to enable view/clone history.
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p traffic
-          gh api "repos/$REPO/traffic/views"  > /tmp/views.json
-          gh api "repos/$REPO/traffic/clones" > /tmp/clones.json
+          if [ -n "$TRAFFIC_TOKEN" ]; then
+            GH_TOKEN="$TRAFFIC_TOKEN" gh api "repos/$REPO/traffic/views"  > /tmp/views.json
+            GH_TOKEN="$TRAFFIC_TOKEN" gh api "repos/$REPO/traffic/clones" > /tmp/clones.json
+          else
+            echo "::warning::TRAFFIC_TOKEN secret not set — skipping view/clone history (needs a PAT with Administration: read). Logging download totals only."
+          fi
+          # Release download totals are public; the default token can read them.
           gh api "repos/$REPO/releases" --paginate > /tmp/releases.json
 
           python3 - <<'PY'
@@ -31,6 +41,8 @@ jobs:
 
           def merge(daily_file, api_file, key):
               # api_file has a "<key>" array of {timestamp, count, uniques}.
+              if not os.path.exists(api_file):
+                  return  # no PAT this run — leave existing history untouched
               store = {}
               if os.path.exists(daily_file):
                   store = json.load(open(daily_file))
