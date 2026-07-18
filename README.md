@@ -2,6 +2,12 @@
 
 **Fast, reliable Android phone backups for Windows — over ADB, not MTP.**
 
+[![Latest release](https://img.shields.io/github/v/release/mnow-dev/AndroidFiles?sort=semver)](https://github.com/mnow-dev/AndroidFiles/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/mnow-dev/AndroidFiles/total)](https://github.com/mnow-dev/AndroidFiles/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/mnow-dev/AndroidFiles/ci.yml?branch=main&label=CI)](https://github.com/mnow-dev/AndroidFiles/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/mnow-dev/AndroidFiles)](LICENSE)
+![Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6)
+
 ![AndroidFiles](docs/screenshot.png)
 
 Windows' built-in phone access (MTP) copies file-by-file, stalls on large
