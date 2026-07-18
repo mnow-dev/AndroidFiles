@@ -80,15 +80,21 @@ jobs:
             --packDir pack `
             --mainExe android_files.exe `
             --icon windows/runner/resources/app_icon.ico
+          # vpk also emits its own generic *-Portable.zip (with the updater in
+          # it). We ship our own versioned, updater-free portable ZIP below, so
+          # drop Velopack's to avoid two confusing portable downloads.
+          Remove-Item Releases/*-Portable.zip -ErrorAction SilentlyContinue
 
-      # Keep shipping the portable ZIP alongside Setup.exe for a while: existing
-      # ZIP users have no automatic path into the Velopack install.
+      # Keep shipping a portable ZIP alongside Setup.exe: existing ZIP users
+      # have no automatic path into the Velopack install. It omits the updater
+      # exe — portable builds can't self-update anyway, and it's ~68 MB.
       - name: Build the portable ZIP
         shell: pwsh
         run: |
           $v = "${{ github.ref_name }}"
           $zip = "AndroidFiles-$v-windows-x64.zip"
-          Compress-Archive -Path pack/* -DestinationPath $zip
+          $items = Get-ChildItem pack -Exclude 'AndroidFilesUpdater.exe'
+          Compress-Archive -Path $items -DestinationPath $zip
           Get-FileHash $zip -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  $zip" } | Set-Content "$zip.sha256"
 
