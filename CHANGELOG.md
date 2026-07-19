@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1 — 2026-07-19
+
+Maintenance release: validates the in-place Velopack updater end to end
+(download, apply, relaunch). No user-facing feature changes.
+
 ## v0.1.0 — 2026-07-17
 
 First release.
