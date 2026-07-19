@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../app_controller.dart';
 import '../scheduler.dart';
 import '../settings.dart';
+import '../update_checker.dart';
 
 Future<String?> _pickExe(String title) async {
   final r = await FilePicker.pickFiles(
@@ -19,10 +20,22 @@ Future<String?> _pickExe(String title) async {
 /// the drive is mounted). A–D are skipped: A/B are floppies by convention and
 /// C/D are almost always taken.
 List<String> _driveLetterOptions(String current) {
+  // A letter is a candidate mount point only if nothing occupies it. Note
+  // existsSync() THROWS for a letter assigned to a not-ready device (an empty
+  // card reader, a disconnected network or optical drive) rather than
+  // returning true — treat that as occupied, not free, and never let it
+  // propagate: it would abort building the whole Settings dialog.
+  bool isFree(String root) {
+    try {
+      return !Directory(root).existsSync();
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   final letters = <String>{
     for (var c = 'E'.codeUnitAt(0); c <= 'Z'.codeUnitAt(0); c++)
-      if (!Directory('${String.fromCharCode(c)}:\\').existsSync())
-        '${String.fromCharCode(c)}:',
+      if (isFree('${String.fromCharCode(c)}:\\')) '${String.fromCharCode(c)}:',
     if (current.isNotEmpty) current,
   };
   return letters.toList()..sort();
@@ -167,6 +180,12 @@ Future<void> showSettingsDialog(BuildContext context, AppController app) async {
           Align(
             alignment: Alignment.centerLeft,
             child: Text('adb path changes take effect after an app restart.',
+                style: FluentTheme.of(ctx).typography.caption),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('AndroidFiles v$appVersion',
                 style: FluentTheme.of(ctx).typography.caption),
           ),
         ]),
