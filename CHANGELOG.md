@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 — 2026-07-19
+
+- Fix: the Settings dialog silently failed to open when a drive letter was
+  assigned to a not-ready device (an empty card reader, a disconnected
+  network or optical drive)
+- Show the app version at the bottom of the Settings dialog
+
 ## v0.1.1 — 2026-07-19
 
 Maintenance release: validates the in-place Velopack updater end to end
