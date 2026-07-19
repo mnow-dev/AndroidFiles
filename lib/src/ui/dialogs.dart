@@ -637,3 +637,59 @@ Future<void> showWifiDialog(BuildContext context, AppController app) async {
   );
   app.stopQrPairing();
 }
+
+/// Prompt to install an available update. Shown automatically when one is
+/// found (see [_HomeScreenState]); the body switches to a progress bar while
+/// the download/apply runs, and the buttons hide so it can't be dismissed
+/// mid-install.
+Future<void> showUpdateDialog(BuildContext context, AppController app) async {
+  final info = app.update;
+  if (info == null) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => ListenableBuilder(
+      listenable: app,
+      builder: (ctx, _) {
+        final l = AppLocalizations.of(ctx);
+        final progress = app.updateProgress;
+        final installing = progress != null;
+        return ContentDialog(
+          constraints: const BoxConstraints(maxWidth: 380),
+          title: Text(l.updateAvailable(info.version)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.runningCurrent(appVersion)),
+              if (installing) ...[
+                const SizedBox(height: 14),
+                ProgressBar(value: progress.toDouble()),
+                const SizedBox(height: 6),
+                Text(
+                  l.downloadingPercent(progress),
+                  style: FluentTheme.of(ctx).typography.caption,
+                ),
+              ],
+            ],
+          ),
+          actions: installing
+              // No dismiss while an install is under way.
+              ? [FilledButton(onPressed: null, child: Text(l.updateButton))]
+              : [
+                  Button(
+                    onPressed: () {
+                      app.dismissUpdate();
+                      Navigator.pop(ctx);
+                    },
+                    child: Text(l.updateLater),
+                  ),
+                  FilledButton(
+                    onPressed: app.installUpdate,
+                    child: Text(l.updateButton),
+                  ),
+                ],
+        );
+      },
+    ),
+  );
+}

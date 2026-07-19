@@ -2,7 +2,6 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_controller.dart';
-import '../update_checker.dart';
 import 'dialogs.dart';
 import 'queue_panel.dart';
 import 'tree_panel.dart';
@@ -19,6 +18,31 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   AppController get app => widget.app;
   late double _split = app.settings.splitRatio;
+  bool _updatePrompted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    app.addListener(_maybePromptUpdate);
+    // An update may already have been found before this widget mounted.
+    _maybePromptUpdate();
+  }
+
+  @override
+  void dispose() {
+    app.removeListener(_maybePromptUpdate);
+    super.dispose();
+  }
+
+  /// Pop the update dialog once, the first time a newer release is detected.
+  void _maybePromptUpdate() {
+    if (_updatePrompted || app.update == null || !mounted) return;
+    _updatePrompted = true;
+    // Defer past the current notify/build so we never showDialog mid-frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && app.update != null) showUpdateDialog(context, app);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,29 +125,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         content: Column(
           children: [
-            if (app.update != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                child: InfoBar(
-                  title: Text(l.updateAvailable(app.update!.version)),
-                  content: app.updateProgress != null
-                      ? Text(l.downloadingPercent(app.updateProgress!))
-                      : Text(l.runningCurrent(appVersion)),
-                  severity: InfoBarSeverity.info,
-                  // No dismiss once an install is under way.
-                  onClose: app.updateProgress != null ? null : app.dismissUpdate,
-                  action: app.updateProgress != null
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: ProgressRing(strokeWidth: 3),
-                        )
-                      : Button(
-                          onPressed: app.installUpdate,
-                          child: Text(l.updateButton),
-                        ),
-                ),
-              ),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {

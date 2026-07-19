@@ -83,6 +83,7 @@
   "downloadingPercent": "Завантаження… {percent}%",
   "runningCurrent": "Ви використовуєте {version}.",
   "updateButton": "Оновити",
+  "updateLater": "Пізніше",
   "adbDownloadFailed": "Не вдалося автоматично завантажити adb.",
   "adbDownloading": "Завантаження adb (platform-tools)… {percent}%",
   "adbSettingUp": "Налаштування adb…",

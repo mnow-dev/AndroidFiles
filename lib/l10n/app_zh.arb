@@ -83,6 +83,7 @@
   "downloadingPercent": "正在下载… {percent}%",
   "runningCurrent": "你正在运行 {version}。",
   "updateButton": "更新",
+  "updateLater": "以后",
   "adbDownloadFailed": "无法自动下载 adb。",
   "adbDownloading": "正在下载 adb (platform-tools)… {percent}%",
   "adbSettingUp": "正在设置 adb…",

@@ -185,6 +185,7 @@
   "runningCurrent": "You're running {version}.",
   "@runningCurrent": { "placeholders": { "version": {} } },
   "updateButton": "Update",
+  "updateLater": "Later",
 
   "adbDownloadFailed": "Could not download adb automatically.",
   "adbDownloading": "Downloading adb (platform-tools)… {percent}%",

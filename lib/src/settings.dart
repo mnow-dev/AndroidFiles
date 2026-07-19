@@ -48,6 +48,12 @@ class Profile {
 class Settings {
   String adbPath;
   String lastDestination;
+
+  /// Serial of the last device that was selected; re-selected on launch when
+  /// it's connected again (handy with more than one phone). USB serials are
+  /// stable; wireless ip:port ones change per boot, so they simply won't match.
+  String lastDeviceSerial;
+
   BackupLayout layout;
   bool incremental;
   String driveExePath;
@@ -86,6 +92,7 @@ class Settings {
   Settings({
     required this.adbPath,
     this.lastDestination = '',
+    this.lastDeviceSerial = '',
     this.layout = BackupLayout.mirror,
     this.incremental = true,
     String? driveExePath,
@@ -143,6 +150,7 @@ class Settings {
         final saved = json['adbPath'] as String?;
         if (saved != null && await File(saved).exists()) settings.adbPath = saved;
         settings.lastDestination = json['lastDestination'] as String? ?? '';
+        settings.lastDeviceSerial = json['lastDeviceSerial'] as String? ?? '';
         settings.layout =
             BackupLayout.values.asNameMap()[json['layout']] ?? BackupLayout.mirror;
         settings.incremental = json['incremental'] as bool? ?? true;
@@ -177,6 +185,7 @@ class Settings {
     await f.writeAsString(jsonEncode({
       'adbPath': adbPath,
       'lastDestination': lastDestination,
+      'lastDeviceSerial': lastDeviceSerial,
       'layout': layout.name,
       'incremental': incremental,
       'driveExePath': driveExePath,

@@ -83,6 +83,7 @@
   "downloadingPercent": "ダウンロード中… {percent}%",
   "runningCurrent": "現在 {version} を使用中です。",
   "updateButton": "更新",
+  "updateLater": "後で",
   "adbDownloadFailed": "adb を自動的にダウンロードできませんでした。",
   "adbDownloading": "adb (platform-tools) をダウンロード中… {percent}%",
   "adbSettingUp": "adb をセットアップ中…",

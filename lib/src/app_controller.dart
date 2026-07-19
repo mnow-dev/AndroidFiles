@@ -343,7 +343,12 @@ class AppController extends ChangeNotifier {
       if (selected == null) {
         final ready = found.where((d) => d.isReady).toList();
         if (ready.isNotEmpty) {
-          selected = ready.first;
+          // Prefer the phone we used last time if it's back; else the first.
+          selected = ready.firstWhere(
+            (d) => d.serial == settings.lastDeviceSerial,
+            orElse: () => ready.first,
+          );
+          _rememberDevice(selected!.serial);
           log('Connected to ${selected!.label}');
           _resetTree();
           unawaited(expand(rootPath));
@@ -380,9 +385,18 @@ class AppController extends ChangeNotifier {
   void selectDevice(AdbDevice d) {
     if (d.serial == selected?.serial) return; // re-picking is not a reload
     selected = d;
+    _rememberDevice(d.serial);
     _resetTree();
     notifyListeners();
     unawaited(expand(rootPath));
+  }
+
+  /// Persist the current device so the next launch re-selects it. Not cleared
+  /// on disconnect — the point is to reconnect to it when it comes back.
+  void _rememberDevice(String serial) {
+    if (settings.lastDeviceSerial == serial) return;
+    settings.lastDeviceSerial = serial;
+    unawaited(settings.save());
   }
 
   /// Explicit tree reload (toolbar refresh button).

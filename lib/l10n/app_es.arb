@@ -83,6 +83,7 @@
   "downloadingPercent": "Descargando… {percent}%",
   "runningCurrent": "Estás usando {version}.",
   "updateButton": "Actualizar",
+  "updateLater": "Más tarde",
   "adbDownloadFailed": "No se pudo descargar adb automáticamente.",
   "adbDownloading": "Descargando adb (platform-tools)… {percent}%",
   "adbSettingUp": "Configurando adb…",
