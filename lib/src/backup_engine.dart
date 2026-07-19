@@ -25,6 +25,13 @@ class BackupJob extends ChangeNotifier {
 
   final bool incremental;
 
+  /// Glob patterns (see manifest.dart) whose files are pruned from this backup.
+  /// Empty = keep everything.
+  final List<String> ignore;
+
+  /// Run a deep (md5) verify automatically once this backup finishes.
+  final bool autoVerify;
+
   /// When set, this job PUSHES [localSource] to the device folder
   /// [source.path] instead of backing up (drop-to-restore).
   final String? localSource;
@@ -39,6 +46,24 @@ class BackupJob extends ChangeNotifier {
   int localFileCount = -1;
   int filesStreamed = 0;
   int skippedFiles = 0;
+  int ignoredFiles = 0;
+  int hashedFiles = 0;
+  int verifiedFiles = 0;
+
+  /// Bytes processed / total in the active deep-verify phase, for a
+  /// byte-weighted ETA (a big file is far more work than a small one). Both 0
+  /// when file sizes couldn't be fetched, in which case the ETA falls back to
+  /// the per-file term alone (see [verifyEtaSeconds]).
+  int verifyDoneBytes = 0;
+  int verifyTotalBytes = 0;
+
+  /// Start of the current deep-verify phase (device hashing, then local
+  /// checking); reset at each phase boundary so the ETA reflects that phase's
+  /// own rate rather than a blended average across both.
+  DateTime? verifyPhaseStart;
+
+  /// Set once a deep (md5) verify has passed for this job.
+  bool deepVerified = false;
   int linkedFiles = 0;
   String? currentFile;
   String? error;
@@ -77,6 +102,8 @@ class BackupJob extends ChangeNotifier {
     required this.destDir,
     this.baseDir,
     this.incremental = false,
+    this.ignore = const [],
+    this.autoVerify = false,
     this.localSource,
   });
 
@@ -87,6 +114,32 @@ class BackupJob extends ChangeNotifier {
     if (bytesPerSec < 1 || totalBytes <= 0) return null;
     final remaining = totalBytes - doneBytes;
     return remaining <= 0 ? 0 : remaining / bytesPerSec;
+  }
+
+  /// Estimated seconds remaining in the active deep-verify phase.
+  ///
+  /// Work is modelled as `bytes + perFile·fileCount`, not a plain file count:
+  /// verify time is dominated by the bytes hashed/read, but each file also
+  /// carries a fixed cost (open, md5 init, and on the device a `find`/exec
+  /// round trip), so a run of many tiny files is slower per byte than one big
+  /// one. Projecting the measured work-rate over the remaining work handles
+  /// both. When sizes are unavailable the byte terms are 0 and only the
+  /// per-file term survives — i.e. it degrades to the old files/sec estimate.
+  double? get verifyEtaSeconds {
+    final start = verifyPhaseStart;
+    if (start == null || deviceFileCount <= 0) return null;
+    // verifiedFiles>0 means we're in the local-check pass; else still hashing.
+    final filesDone = verifiedFiles > 0 ? verifiedFiles : hashedFiles;
+    if (filesDone <= 0) return null;
+    final elapsed = DateTime.now().difference(start).inMilliseconds / 1000.0;
+    if (elapsed < 1) return null;
+    const perFile = 256 * 1024; // bytes-equivalent of one file's fixed cost
+    final doneWork = verifyDoneBytes + filesDone * perFile;
+    final totalWork = verifyTotalBytes + deviceFileCount * perFile;
+    final remaining = totalWork - doneWork;
+    if (remaining <= 0) return 0;
+    if (doneWork <= 0) return null;
+    return remaining / (doneWork / elapsed);
   }
 
   void cancel() {
@@ -158,6 +211,11 @@ class BackupEngine extends ChangeNotifier {
           await _runRestoreJob(next);
         } else {
           await _runJob(next);
+          if (next.autoVerify &&
+              (next.status == JobStatus.done ||
+                  next.status == JobStatus.doneWithWarnings)) {
+            await deepVerify(next);
+          }
         }
       }
     } finally {
@@ -242,11 +300,18 @@ class BackupEngine extends ChangeNotifier {
       job._set(JobStatus.measuring);
       log('Measuring $src…');
 
-      List<String>? changed; // null → full (non-incremental) transfer
+      final ignore = compileIgnorePatterns(job.ignore);
+
+      List<String>? changed; // null → full whole-folder transfer
       var unchanged = const <String>[];
       var localOnly = const <String>[];
       if (job.incremental && job.baseDir != null) {
         final deviceMan = await adb.manifest(job.serial, src);
+        if (ignore.isNotEmpty) {
+          final before = deviceMan.length;
+          deviceMan.removeWhere((rel, _) => isIgnored(rel, ignore));
+          job.ignoredFiles = before - deviceMan.length;
+        }
         job.deviceFileCount = deviceMan.length;
         final localMan = await localManifest(job.baseDir!, job.source.name);
         final diff = diffManifests(deviceMan, localMan);
@@ -257,7 +322,20 @@ class BackupEngine extends ChangeNotifier {
         job.totalBytes =
             changed.fold(0, (sum, rel) => sum + (deviceMan[rel]?.size ?? 0));
         log('$src: ${changed.length} changed, ${unchanged.length} unchanged'
-            '${localOnly.isEmpty ? '' : ', ${localOnly.length} local-only'}');
+            '${localOnly.isEmpty ? '' : ', ${localOnly.length} local-only'}'
+            '${job.ignoredFiles > 0 ? ', ${job.ignoredFiles} ignored' : ''}');
+      } else if (ignore.isNotEmpty) {
+        // Full backup with clutter pruning: enumerate, drop ignored files, and
+        // stream just the survivors via the same file-list path incremental
+        // uses (so ignored files never leave the device).
+        final deviceMan = await adb.manifest(job.serial, src);
+        final before = deviceMan.length;
+        deviceMan.removeWhere((rel, _) => isIgnored(rel, ignore));
+        job.ignoredFiles = before - deviceMan.length;
+        changed = deviceMan.keys.toList();
+        job.deviceFileCount = deviceMan.length;
+        job.totalBytes = deviceMan.values.fold(0, (sum, m) => sum + m.size);
+        log('$src: ${changed.length} files, ${job.ignoredFiles} ignored');
       } else {
         job.totalBytes = await adb.sizeOf(job.serial, src);
         job.deviceFileCount = await adb.fileCount(job.serial, src);
@@ -485,25 +563,83 @@ class BackupEngine extends ChangeNotifier {
     job._set(JobStatus.verifying);
     log('Deep verify (md5) of $src — this reads every byte, hang on…');
     try {
-      final device = await adb.md5Manifest(job.serial, src);
+      // File sizes for a byte-weighted ETA — a metadata-only pass, negligible
+      // next to hashing every byte twice. If it fails the ETA falls back to a
+      // per-file estimate (see verifyEtaSeconds), so don't let it abort verify.
+      Map<String, FileMeta> sizes = const {};
+      try {
+        sizes = await adb.manifest(job.serial, src);
+      } catch (_) {}
+      // Total for the progress bar during the device-side hashing pass.
+      job.deviceFileCount = sizes.isNotEmpty
+          ? sizes.length
+          : await adb.fileCount(job.serial, src);
+      job.hashedFiles = 0;
+      job.verifiedFiles = 0;
+      job.verifyDoneBytes = 0;
+      // Hashing runs over every file (no ignore), so weight it by every size.
+      job.verifyTotalBytes = sizes.values.fold(0, (s, m) => s + m.size);
+      job.verifyPhaseStart = DateTime.now(); // device-hashing phase begins
+      final device = await adb.md5Manifest(
+        job.serial,
+        src,
+        onProgress: (n, rel) {
+          job.hashedFiles = n;
+          if (rel != null) job.verifyDoneBytes += sizes[rel]?.size ?? 0;
+          job._tick();
+        },
+      );
+      // Don't flag files the backup deliberately left out (clutter/excluded) as
+      // "missing locally" — verify only what was meant to be copied.
+      final ignore = compileIgnorePatterns(job.ignore);
+      if (ignore.isNotEmpty) {
+        device.removeWhere((rel, _) => isIgnored(rel, ignore));
+      }
+      job.deviceFileCount = device.length;
+      // The local-check pass only touches the kept files: re-weight to those.
+      job.verifyDoneBytes = 0;
+      job.verifyTotalBytes =
+          device.keys.fold(0, (s, k) => s + (sizes[k]?.size ?? 0));
+      job.verifyPhaseStart = DateTime.now(); // local-checking phase begins
       var mismatched = 0;
       var missing = 0;
+      var lastTick = DateTime.now();
       for (final e in device.entries) {
         final f = File('${job.destDir}\\${e.key.replaceAll('/', '\\')}');
         job.currentFile = e.key;
+        job.verifiedFiles++;
         job._tick();
         if (!await f.exists()) {
           missing++;
           job.warnings.add('verify: missing locally: ${e.key}');
+          // Nothing to read; still count its share so progress can reach 100%.
+          job.verifyDoneBytes += sizes[e.key]?.size ?? 0;
           continue;
         }
-        final local = (await md5.bind(f.openRead()).first).toString();
-        if (local != e.value) {
-          mismatched++;
-          job.warnings.add('verify: md5 mismatch: ${e.key}');
+        // Hash in chunks, crediting bytes as they're actually read (and
+        // ticking at most ~10×/s). Crediting the whole file up-front made the
+        // ETA lurch: it counted the work before spending the time on it.
+        final input = md5.startChunkedConversion(
+          ChunkedConversionSink<Digest>.withCallback((digests) {
+            if (digests.single.toString() != e.value) {
+              mismatched++;
+              job.warnings.add('verify: md5 mismatch: ${e.key}');
+            }
+          }),
+        );
+        await for (final chunk in f.openRead()) {
+          input.add(chunk);
+          job.verifyDoneBytes += chunk.length;
+          final now = DateTime.now();
+          if (now.difference(lastTick).inMilliseconds >= 100) {
+            lastTick = now;
+            job._tick();
+          }
         }
+        input.close();
       }
       job.currentFile = null;
+      job.deepVerified = mismatched == 0 && missing == 0;
       if (mismatched == 0 && missing == 0) {
         log('VERIFIED $src — all ${device.length} files match (md5)');
         job._set(JobStatus.done);
@@ -527,6 +663,10 @@ class BackupEngine extends ChangeNotifier {
     job.filesStreamed = 0;
     job.skippedFiles = 0;
     job.linkedFiles = 0;
+    job.hashedFiles = 0;
+    job.verifiedFiles = 0;
+    job.verifyPhaseStart = null;
+    job.deepVerified = false;
     job.error = null;
     job.warnings.clear();
     job._cancelRequested = false;

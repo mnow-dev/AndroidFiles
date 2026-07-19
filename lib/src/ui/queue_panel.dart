@@ -1,8 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../app_controller.dart';
 import '../backup_engine.dart';
+import '../disk_space.dart';
 import '../models.dart';
 import '../settings.dart';
 import 'dialogs.dart';
@@ -27,25 +29,26 @@ class QueuePanel extends StatelessWidget {
   }
 
   Future<void> _saveProfileDialog(BuildContext context) async {
+    final l = AppLocalizations.of(context);
     final name = TextEditingController(text: app.activeProfile?.name ?? '');
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => ContentDialog(
-        title: const Text('Save profile'),
+        title: Text(l.saveProfileTitle),
         content: TextBox(
           controller: name,
           autofocus: true,
-          placeholder: 'Profile name',
+          placeholder: l.profileNamePlaceholder,
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           Button(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, name.text),
-            child: const Text('Save'),
+            child: Text(l.save),
           ),
         ],
       ),
@@ -57,6 +60,7 @@ class QueuePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final selectedCount = app.checked.length;
     final sectionCaption = FluentTheme.of(context).typography.caption?.copyWith(
       fontWeight: FontWeight.w600,
@@ -74,7 +78,7 @@ class QueuePanel extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(left: 2, bottom: 4),
-              child: Text('PROFILE', style: sectionCaption),
+              child: Text(l.sectionProfile, style: sectionCaption),
             ),
             Card(
               padding: const EdgeInsets.all(8),
@@ -89,15 +93,14 @@ class QueuePanel extends StatelessWidget {
                         // is too faint to read.
                         ? TextBox(
                             readOnly: true,
-                            placeholder:
-                                'Profiles (saved selections) appear here',
+                            placeholder: l.profilesPlaceholder,
                             placeholderStyle: TextStyle(
                               color: hintColor(context),
                             ),
                           )
                         : ComboBox<Profile>(
                             value: app.activeProfile,
-                            placeholder: const Text('Load a saved profile'),
+                            placeholder: Text(l.loadProfile),
                             isExpanded: true,
                             items: [
                               for (final p in app.settings.profiles)
@@ -114,7 +117,7 @@ class QueuePanel extends StatelessWidget {
                           ),
                   ),
                   Tooltip(
-                    message: 'Save current selection as profile',
+                    message: l.saveProfileTooltip,
                     child: IconButton(
                       icon: const Icon(FluentIcons.save, size: 16),
                       onPressed: selectedCount == 0
@@ -124,8 +127,8 @@ class QueuePanel extends StatelessWidget {
                   ),
                   Tooltip(
                     message: app.activeProfile?.scheduleTime != null
-                        ? 'Scheduled daily at ${app.activeProfile!.scheduleTime} — edit'
-                        : 'Schedule daily backup of this profile',
+                        ? l.scheduledDailyEdit(app.activeProfile!.scheduleTime!)
+                        : l.scheduleProfileTooltip,
                     child: IconButton(
                       icon: Icon(
                         FluentIcons.clock,
@@ -140,7 +143,7 @@ class QueuePanel extends StatelessWidget {
                     ),
                   ),
                   Tooltip(
-                    message: 'Delete profile',
+                    message: l.deleteProfileTooltip,
                     child: IconButton(
                       icon: const Icon(FluentIcons.delete, size: 16),
                       onPressed: app.activeProfile == null
@@ -154,7 +157,7 @@ class QueuePanel extends StatelessWidget {
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.only(left: 2, bottom: 4),
-              child: Text('BACKUP', style: sectionCaption),
+              child: Text(l.sectionBackup, style: sectionCaption),
             ),
             Card(
               padding: const EdgeInsets.all(10),
@@ -162,19 +165,18 @@ class QueuePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   InfoLabel(
-                    label: 'Destination',
+                    label: l.destination,
                     child: Row(
                       children: [
                         Expanded(
                           child: TextBox(
                             controller: app.destination,
-                            placeholder:
-                                r'Folder on this PC, e.g. E:\PhoneBackup',
+                            placeholder: l.destinationPlaceholder,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Tooltip(
-                          message: 'Browse for a destination folder',
+                          message: l.browseDestination,
                           child: IconButton(
                             icon: const Icon(
                               FluentIcons.open_folder_horizontal,
@@ -186,45 +188,72 @@ class QueuePanel extends StatelessWidget {
                       ],
                     ),
                   ),
+                  _SpaceLine(app: app),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 130,
-                        child: ComboBox<BackupLayout>(
-                          value: app.layout,
-                          isExpanded: true,
-                          items: const [
-                            ComboBoxItem(
-                              value: BackupLayout.mirror,
-                              child: Text('Mirror'),
+                  Expander(
+                    initiallyExpanded: true,
+                    header: Text(l.options),
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 130,
+                              child: ComboBox<BackupLayout>(
+                                value: app.layout,
+                                isExpanded: true,
+                                items: [
+                                  ComboBoxItem(
+                                    value: BackupLayout.mirror,
+                                    child: Text(l.layoutMirror),
+                                  ),
+                                  ComboBoxItem(
+                                    value: BackupLayout.snapshot,
+                                    child: Text(l.layoutSnapshot),
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    v != null ? app.layout = v : null,
+                              ),
                             ),
-                            ComboBoxItem(
-                              value: BackupLayout.snapshot,
-                              child: Text('Snapshot'),
+                            Checkbox(
+                              checked: app.incremental,
+                              onChanged: (v) => app.incremental = v ?? true,
+                              content: Text(l.incremental),
+                            ),
+                            Tooltip(
+                              message: l.skipClutterTooltip(
+                                app.settings.clutterPatterns.join(', '),
+                              ),
+                              child: Checkbox(
+                                checked: app.skipClutter,
+                                onChanged: (v) => app.skipClutter = v ?? false,
+                                content: Text(l.skipClutter),
+                              ),
+                            ),
+                            Tooltip(
+                              message: l.verifyAfterBackupHint,
+                              child: Checkbox(
+                                checked: app.autoVerify,
+                                onChanged: (v) => app.autoVerify = v ?? false,
+                                content: Text(l.verifyAfterBackup),
+                              ),
                             ),
                           ],
-                          onChanged: (v) => v != null ? app.layout = v : null,
                         ),
-                      ),
-                      Checkbox(
-                        checked: app.incremental,
-                        onChanged: (v) => app.incremental = v ?? true,
-                        content: const Text('Incremental (skip unchanged)'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    app.layout == BackupLayout.mirror
-                        ? 'Mirror: keeps one up-to-date copy in the destination.'
-                        : 'Snapshot: a new dated folder per run — unchanged files are '
-                              'linked, not copied, so history costs almost no space.',
-                    style: FluentTheme.of(context).typography.caption?.copyWith(
-                      color: hintColor(context),
+                        const SizedBox(height: 4),
+                        Text(
+                          app.layout == BackupLayout.mirror
+                              ? l.mirrorHint
+                              : l.snapshotHint,
+                          style: FluentTheme.of(context).typography.caption
+                              ?.copyWith(color: hintColor(context)),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -244,8 +273,8 @@ class QueuePanel extends StatelessWidget {
                           const SizedBox(width: 6),
                           Text(
                             selectedCount == 0
-                                ? 'Select folders to back up'
-                                : 'Back up $selectedCount item(s)',
+                                ? l.selectFoldersToBackUp
+                                : l.backUpItems(selectedCount),
                           ),
                         ],
                       ),
@@ -257,13 +286,13 @@ class QueuePanel extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Text('QUEUE', style: sectionCaption),
+                Text(l.sectionQueue, style: sectionCaption),
                 const Spacer(),
                 HyperlinkButton(
                   onPressed: app.engine.jobs.any((j) => j.status.isTerminal)
                       ? app.engine.clearFinished
                       : null,
-                  child: const Text('Clear finished'),
+                  child: Text(l.clearFinished),
                 ),
               ],
             ),
@@ -279,6 +308,52 @@ class QueuePanel extends StatelessWidget {
   }
 }
 
+/// Free space on the destination drive and the measured size of the current
+/// selection — a quiet caption that turns amber when the selection may not fit.
+class _SpaceLine extends StatelessWidget {
+  final AppController app;
+  const _SpaceLine({required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = FluentTheme.of(context);
+    final space = driveSpaceForPath(app.destination.text);
+    final sel = app.selectionBytes;
+
+    final parts = <String>[
+      if (space != null) l.driveFree(fmtBytes(space.freeBytes), space.root),
+      if (app.measuringSelection)
+        l.measuringSize
+      else if (sel != null && sel > 0)
+        l.selectedSize(fmtBytes(sel)),
+    ];
+    if (parts.isEmpty) return const SizedBox(height: 4);
+
+    final tooBig = space != null && sel != null && sel > space.freeBytes;
+    final color = tooBig ? Colors.orange : hintColor(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 2),
+      child: Row(
+        children: [
+          if (tooBig) ...[
+            Icon(FluentIcons.warning, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Expanded(
+            child: Text(
+              tooBig
+                  ? '${parts.join('  ·  ')}  ·  ${l.selectionMayNotFit}'
+                  : parts.join('  ·  '),
+              style: theme.typography.caption?.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Onboarding checklist shown while the queue is empty; steps tick
 /// themselves off as the user completes them.
 class _GettingStarted extends StatelessWidget {
@@ -287,6 +362,7 @@ class _GettingStarted extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = FluentTheme.of(context);
     final secondary = theme.resources.textFillColorSecondary;
     final deviceOk = app.selected != null;
@@ -340,29 +416,20 @@ class _GettingStarted extends StatelessWidget {
           children: [
             const SizedBox(height: 24),
             Text(
-              'Back up your phone in 3 steps',
+              l.backupIn3Steps,
               style: theme.typography.bodyStrong,
             ),
             const SizedBox(height: 10),
             step(
               1,
               deviceOk,
-              deviceOk
-                  ? 'Phone connected'
-                  : 'Connect your phone (USB or the Wi-Fi icon above)',
+              deviceOk ? l.stepPhoneConnected : l.stepConnectPhone,
             ),
-            step(
-              2,
-              foldersOk,
-              'Tick the folders to save in the tree on the left',
-            ),
-            step(3, destOk, 'Choose where to store them, then press Back up'),
+            step(2, foldersOk, l.stepTickFolders),
+            step(3, destOk, l.stepChooseDestination),
             const SizedBox(height: 16),
             Text(
-              'Tips: drag files from Explorer onto the tree to copy them TO the '
-              'phone · save your selection as a profile for one-click re-runs '
-              'and daily scheduling · the disk icon up top shows the phone '
-              'directly in Explorer',
+              l.onboardingTips,
               style: theme.typography.caption?.copyWith(
                 color: hintColor(context),
               ),
@@ -386,6 +453,7 @@ class _JobTile extends StatelessWidget {
     return ListenableBuilder(
       listenable: job,
       builder: (context, _) {
+        final l = AppLocalizations.of(context);
         final theme = FluentTheme.of(context);
         final secondary = theme.resources.textFillColorSecondary;
         final active = job.status == JobStatus.running;
@@ -414,7 +482,7 @@ class _JobTile extends StatelessWidget {
                     _StatusChip(status: job.status, paused: job.paused),
                     if (job.canPause || job.paused)
                       Tooltip(
-                        message: job.paused ? 'Resume' : 'Pause',
+                        message: job.paused ? l.resume : l.pause,
                         child: IconButton(
                           icon: Icon(
                             job.paused ? FluentIcons.play : FluentIcons.pause,
@@ -425,7 +493,7 @@ class _JobTile extends StatelessWidget {
                       ),
                     if (!job.status.isTerminal)
                       Tooltip(
-                        message: 'Cancel',
+                        message: l.cancelJob,
                         child: IconButton(
                           icon: const Icon(FluentIcons.chrome_close, size: 12),
                           onPressed: job.cancel,
@@ -434,7 +502,7 @@ class _JobTile extends StatelessWidget {
                     if (job.status == JobStatus.failed ||
                         job.status == JobStatus.cancelled)
                       Tooltip(
-                        message: 'Retry',
+                        message: l.retry,
                         child: IconButton(
                           icon: const Icon(FluentIcons.refresh, size: 12),
                           onPressed: () => engine.retry(job),
@@ -444,11 +512,14 @@ class _JobTile extends StatelessWidget {
                         (job.status == JobStatus.done ||
                             job.status == JobStatus.doneWithWarnings))
                       Tooltip(
-                        message: 'Deep verify (md5 of every file — slow)',
+                        message: job.deepVerified
+                            ? l.verifiedTooltip
+                            : l.deepVerifyTooltip,
                         child: IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             FluentIcons.verified_brand,
                             size: 12,
+                            color: job.deepVerified ? Colors.green : null,
                           ),
                           onPressed: () => engine.deepVerify(job),
                         ),
@@ -457,21 +528,67 @@ class _JobTile extends StatelessWidget {
                 ),
                 if (active || job.status == JobStatus.verifying) ...[
                   const SizedBox(height: 6),
-                  ProgressBar(value: active ? job.progress * 100 : null),
+                  ProgressBar(
+                    // Verify shows file-by-file progress (device hashing, then
+                    // local checking); the transfer shows byte progress.
+                    value: job.deviceFileCount > 0 && job.verifiedFiles > 0
+                        ? job.verifiedFiles / job.deviceFileCount * 100
+                        : job.deviceFileCount > 0 && job.hashedFiles > 0
+                        ? job.hashedFiles / job.deviceFileCount * 100
+                        : (active ? job.progress * 100 : null),
+                  ),
                   const SizedBox(height: 4),
                   Text(
-                    [
-                      '${fmtBytes(job.doneBytes)} / ${fmtBytes(job.totalBytes)}',
-                      if (active) fmtSpeed(job.bytesPerSec),
-                      if (active && fmtEta(job.etaSeconds).isNotEmpty)
-                        'ETA ${fmtEta(job.etaSeconds)}',
-                      if (job.deviceFileCount > 0)
-                        '${job.filesStreamed}/${job.deviceFileCount} files',
-                      if (job.linkedFiles > 0) '${job.linkedFiles} linked',
-                    ].join(' · '),
+                    active
+                        // Transfer: byte/file progress.
+                        ? [
+                            '${fmtBytes(job.doneBytes)} / ${fmtBytes(job.totalBytes)}',
+                            fmtSpeed(job.bytesPerSec),
+                            if (fmtEta(job.etaSeconds).isNotEmpty)
+                              l.etaLabel(fmtEta(job.etaSeconds)),
+                            // Count against the files actually being copied
+                            // (total minus skipped), not the whole device —
+                            // otherwise an incremental run looks stuck at e.g.
+                            // 0/775 when it only has 14 to copy.
+                            if (job.deviceFileCount - job.skippedFiles > 0)
+                              l.filesProgress(
+                                job.filesStreamed,
+                                job.deviceFileCount - job.skippedFiles,
+                              ),
+                            if (job.skippedFiles > 0)
+                              l.filesSkipped(job.skippedFiles),
+                            if (job.ignoredFiles > 0)
+                              l.filesIgnored(job.ignoredFiles),
+                          ].join(' · ')
+                        // Verifying: hashing on the device, then checking each
+                        // local file; "Preparing…" only until the first count.
+                        : job.verifiedFiles > 0
+                        ? [
+                            l.verifyingMd5(
+                              job.verifiedFiles,
+                              job.deviceFileCount,
+                            ),
+                            if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
+                              l.etaLabel(fmtEta(job.verifyEtaSeconds)),
+                          ].join(' · ')
+                        : job.hashedFiles > 0
+                        ? [
+                            l.hashingOnDevice(
+                              job.hashedFiles,
+                              job.deviceFileCount > 0
+                                  ? job.deviceFileCount
+                                  : '?',
+                            ),
+                            if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
+                              l.etaLabel(fmtEta(job.verifyEtaSeconds)),
+                          ].join(' · ')
+                        : job.linkedFiles > 0
+                        ? l.linkingUnchanged(job.linkedFiles)
+                        : l.preparingEllipsis,
                     style: theme.typography.caption,
                   ),
-                  if (active && job.currentFile != null)
+                  if ((active || job.status == JobStatus.verifying) &&
+                      job.currentFile != null)
                     Text(
                       job.currentFile!,
                       maxLines: 1,
@@ -487,15 +604,45 @@ class _JobTile extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       [
-                        '${fmtBytes(job.doneBytes)} transferred',
+                        // Restore (adb push) doesn't track a file count, so
+                        // only fold it in when we have one.
+                        if (job.filesStreamed > 0)
+                          l.transferredFiles(
+                            job.filesStreamed,
+                            fmtBytes(job.doneBytes),
+                          )
+                        else
+                          l.transferredBytes(fmtBytes(job.doneBytes)),
                         if (job.skippedFiles > 0)
-                          '${job.skippedFiles} unchanged skipped',
+                          l.unchangedSkipped(job.skippedFiles),
+                        if (job.ignoredFiles > 0)
+                          l.filesIgnored(job.ignoredFiles),
                         if (job.linkedFiles > 0)
-                          '${job.linkedFiles} hardlinked',
+                          l.hardlinked(job.linkedFiles),
                       ].join(' · '),
                       style: theme.typography.caption?.copyWith(
                         color: secondary,
                       ),
+                    ),
+                  ),
+                if (job.deepVerified)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          FluentIcons.completed_solid,
+                          size: 12,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          l.verifiedAllMatch,
+                          style: theme.typography.caption?.copyWith(
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 if (job.error != null)
@@ -534,6 +681,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final Color color = paused
         ? Colors.grey[80]
         : switch (status) {
@@ -543,6 +691,16 @@ class _StatusChip extends StatelessWidget {
             JobStatus.cancelled => Colors.grey[80],
             _ => FluentTheme.of(context).accentColor,
           };
+    final label = switch (status) {
+      JobStatus.queued => l.statusQueued,
+      JobStatus.measuring => l.statusMeasuring,
+      JobStatus.running => l.statusCopying,
+      JobStatus.verifying => l.statusVerifying,
+      JobStatus.done => l.statusDone,
+      JobStatus.doneWithWarnings => l.statusDoneWarnings,
+      JobStatus.failed => l.statusFailed,
+      JobStatus.cancelled => l.statusCancelled,
+    };
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -551,7 +709,7 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
-        paused ? 'paused' : status.label,
+        paused ? l.statusPaused : label,
         style: FluentTheme.of(
           context,
         ).typography.caption?.copyWith(color: color),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'manifest.dart';
 import 'models.dart';
 
 /// A saved backup configuration for one-click re-runs.
@@ -58,6 +59,9 @@ class Settings {
 
   /// 'light' | 'dark' | 'system'
   String themeMode;
+
+  /// UI language code (e.g. 'en', 'es'); empty = follow the system locale.
+  String locale;
   bool showLog;
 
   /// Fraction of the window width given to the folder tree (drag to resize).
@@ -66,6 +70,16 @@ class Settings {
   /// Check GitHub Releases for a newer version on launch. On by default; the
   /// only thing it sends is an unauthenticated GET to a public endpoint.
   bool checkForUpdates;
+
+  /// Skip known clutter (caches/system files, see [clutterPatterns]) during
+  /// backups. Off by default so a backup is complete unless the user opts in.
+  bool skipClutter;
+
+  /// Run a deep (md5) verify automatically after each backup.
+  bool autoVerify;
+
+  /// Glob patterns pruned when [skipClutter] is on; user-editable in Settings.
+  List<String> clutterPatterns;
 
   final List<Profile> profiles;
 
@@ -78,11 +92,16 @@ class Settings {
     this.driveMountPoint = 'P:',
     this.driveWritable = false,
     this.themeMode = 'light',
+    this.locale = '',
     this.showLog = false,
     this.splitRatio = 0.4,
     this.checkForUpdates = true,
+    this.skipClutter = false,
+    this.autoVerify = false,
+    List<String>? clutterPatterns,
     List<Profile>? profiles,
   })  : driveExePath = driveExePath ?? defaultDriveExePath(),
+        clutterPatterns = clutterPatterns ?? List.of(defaultClutterPatterns),
         profiles = profiles ?? [];
 
   /// In a shipped package AdbDrive.exe sits in drive\ next to the app exe. In
@@ -133,10 +152,15 @@ class Settings {
             json['driveMountPoint'] as String? ?? settings.driveMountPoint;
         settings.driveWritable = json['driveWritable'] as bool? ?? false;
         settings.themeMode = json['themeMode'] as String? ?? 'light';
+        settings.locale = json['locale'] as String? ?? '';
         settings.showLog = json['showLog'] as bool? ?? false;
         settings.splitRatio =
             (json['splitRatio'] as num?)?.toDouble().clamp(0.15, 0.85) ?? 0.4;
         settings.checkForUpdates = json['checkForUpdates'] as bool? ?? true;
+        settings.skipClutter = json['skipClutter'] as bool? ?? false;
+        settings.autoVerify = json['autoVerify'] as bool? ?? false;
+        final cp = json['clutterPatterns'];
+        if (cp is List) settings.clutterPatterns = cp.cast<String>();
         for (final p in (json['profiles'] as List? ?? const [])) {
           settings.profiles.add(Profile.fromJson(p as Map<String, dynamic>));
         }
@@ -159,9 +183,13 @@ class Settings {
       'driveMountPoint': driveMountPoint,
       'driveWritable': driveWritable,
       'themeMode': themeMode,
+      'locale': locale,
       'showLog': showLog,
       'splitRatio': splitRatio,
       'checkForUpdates': checkForUpdates,
+      'skipClutter': skipClutter,
+      'autoVerify': autoVerify,
+      'clutterPatterns': clutterPatterns,
       'profiles': [for (final p in profiles) p.toJson()],
     }));
   }

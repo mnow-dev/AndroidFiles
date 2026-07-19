@@ -24,8 +24,8 @@ class DriveManager extends ChangeNotifier {
   Future<void> mount(String serial, String adbPath) async {
     if (_proc != null) return;
     if (!available) {
-      log('Drive host not found at ${settings.driveExePath} — build it with: '
-          'dotnet publish drive -c Release -o drive\\publish');
+      log('Explorer drive host not found (${settings.driveExePath}). '
+          'Reinstall, or point Settings → Explorer drive host at AdbDrive.exe.');
       return;
     }
     // A killed host can't clean its pull cache; sweep it before mounting.
@@ -33,6 +33,7 @@ class DriveManager extends ChangeNotifier {
     if (await stale.exists()) {
       await stale.delete(recursive: true).catchError((_) => stale);
     }
+    final startedAt = Stopwatch()..start();
     final proc = await Process.start(settings.driveExePath, [
       '--serial', serial,
       '--mount', mountPoint,
@@ -50,7 +51,14 @@ class DriveManager extends ChangeNotifier {
         .listen((l) => log('[drive] $l'));
     unawaited(proc.exitCode.then((code) {
       _proc = null;
-      log('Drive unmounted (host exited ${code == 0 ? 'cleanly' : 'with $code'})');
+      // A host that dies within seconds never really mounted — almost always a
+      // missing prerequisite. Say so instead of a bare "exited with N".
+      if (code != 0 && startedAt.elapsed < const Duration(seconds: 4)) {
+        log('Explorer drive host exited immediately (code $code) — it needs '
+            'WinFsp (winfsp.dev) and the .NET Desktop Runtime installed.');
+      } else {
+        log('Drive unmounted (host exited ${code == 0 ? 'cleanly' : 'with $code'})');
+      }
       notifyListeners();
     }));
     log(settings.driveWritable

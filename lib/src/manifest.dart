@@ -61,6 +61,61 @@ Map<String, String> parseMd5Manifest(String raw, String parentPrefix) {
   return result;
 }
 
+/// Compile ignore [patterns] into matchers. Each pattern is a '/'-separated
+/// glob (case-insensitive; `*` and `?` match within a single segment). It
+/// matches a run of consecutive path segments anywhere in a relative path —
+/// so `.thumbnails` skips any such directory at any depth, and `Android/data`
+/// skips exactly that subtree. Blank/whitespace patterns are dropped.
+List<RegExp> compileIgnorePatterns(Iterable<String> patterns) {
+  final out = <RegExp>[];
+  for (final raw in patterns) {
+    final segs = raw
+        .trim()
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .map(_globToRegex)
+        .toList();
+    if (segs.isEmpty) continue;
+    out.add(RegExp('(^|/)${segs.join('/')}(/|\$)', caseSensitive: false));
+  }
+  return out;
+}
+
+String _globToRegex(String seg) {
+  final sb = StringBuffer();
+  for (final rune in seg.runes) {
+    final ch = String.fromCharCode(rune);
+    if (ch == '*') {
+      sb.write('[^/]*');
+    } else if (ch == '?') {
+      sb.write('[^/]');
+    } else {
+      sb.write(RegExp.escape(ch));
+    }
+  }
+  return sb.toString();
+}
+
+/// Whether [relPath] (tar-style, '/'-separated) matches any compiled pattern.
+bool isIgnored(String relPath, List<RegExp> compiled) {
+  for (final re in compiled) {
+    if (re.hasMatch(relPath)) return true;
+  }
+  return false;
+}
+
+/// The default clutter (caches/system files) the "skip clutter" option
+/// removes. Kept conservative: caches and recovery cruft that regenerate or
+/// aren't useful in a backup — never user documents or media.
+const defaultClutterPatterns = <String>[
+  '.thumbnails', // gallery thumbnail caches
+  '.trashed-*', // Android per-file trash
+  'LOST.DIR', // FAT filesystem recovery fragments
+  '.thumbdata*', // messenger thumbnail blobs
+  'Android/data', // per-app caches/data (often unreadable anyway)
+  'Android/obb', // app expansion downloads
+];
+
 class ManifestDiff {
   /// On device, missing or different locally — must transfer.
   final List<String> changed;

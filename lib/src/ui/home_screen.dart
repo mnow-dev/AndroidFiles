@@ -1,5 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../app_controller.dart';
 import '../update_checker.dart';
 import 'dialogs.dart';
@@ -21,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: app,
       builder: (context, _) => ScaffoldPage(
@@ -41,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               _DevicePicker(app: app),
               Tooltip(
-                message: 'Refresh file list',
+                message: l.tooltipRefresh,
                 child: IconButton(
                   icon: const Icon(FluentIcons.refresh, size: 16),
                   onPressed: app.selected == null ? null : app.refreshTree,
@@ -50,8 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               Tooltip(
                 message: app.drive.mounted
-                    ? 'Unmount ${app.drive.mountPoint} drive'
-                    : 'Mount phone as ${app.drive.mountPoint} in Explorer',
+                    ? l.unmountDrive(app.drive.mountPoint)
+                    : l.mountDrive(app.drive.mountPoint),
                 child: IconButton(
                   icon: Icon(
                     FluentIcons.hard_drive,
@@ -68,14 +70,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Tooltip(
-                message: 'Wireless debugging (QR pair / connect)',
+                message: l.tooltipWireless,
                 child: IconButton(
                   icon: const Icon(FluentIcons.wifi, size: 16),
                   onPressed: () => showWifiDialog(context, app),
                 ),
               ),
               Tooltip(
-                message: app.showLog ? 'Hide log' : 'Show log',
+                message: app.showLog ? l.tooltipHideLog : l.tooltipShowLog,
                 child: IconButton(
                   icon: Icon(
                     FluentIcons.command_prompt,
@@ -88,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Tooltip(
-                message: 'Settings',
+                message: l.tooltipSettings,
                 child: IconButton(
                   icon: const Icon(FluentIcons.settings, size: 16),
                   onPressed: () => showSettingsDialog(context, app),
@@ -103,10 +105,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                 child: InfoBar(
-                  title: Text('Version ${app.update!.version} is available'),
+                  title: Text(l.updateAvailable(app.update!.version)),
                   content: app.updateProgress != null
-                      ? Text('Downloading… ${app.updateProgress}%')
-                      : const Text("You're running $appVersion."),
+                      ? Text(l.downloadingPercent(app.updateProgress!))
+                      : Text(l.runningCurrent(appVersion)),
                   severity: InfoBarSeverity.info,
                   // No dismiss once an install is under way.
                   onClose: app.updateProgress != null ? null : app.dismissUpdate,
@@ -118,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         )
                       : Button(
                           onPressed: app.installUpdate,
-                          child: const Text('Update'),
+                          child: Text(l.updateButton),
                         ),
                 ),
               ),
@@ -199,6 +201,7 @@ class _DevicePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final caption = FluentTheme.of(context).typography.caption?.copyWith(
       color: FluentTheme.of(context).resources.textFillColorSecondary,
     );
@@ -210,7 +213,7 @@ class _DevicePicker extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              'No device — plug in via USB or use the Wi-Fi button',
+              l.noDevice,
               overflow: TextOverflow.fade,
               softWrap: false,
               style: caption,
@@ -231,7 +234,7 @@ class _DevicePicker extends StatelessWidget {
         const SizedBox(width: 6),
         Flexible(
           child: Text(
-            'Device',
+            l.deviceLabel,
             overflow: TextOverflow.fade,
             softWrap: false,
             style: caption,
@@ -244,7 +247,7 @@ class _DevicePicker extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 180),
             child: ComboBox<String>(
               value: app.selected?.serial,
-              placeholder: const Text('Select device'),
+              placeholder: Text(l.selectDevice),
               isExpanded: true,
               items: [
                 for (final d in app.devices)
@@ -263,6 +266,7 @@ class _DevicePicker extends StatelessWidget {
                             d.isReady
                                 ? (d.model.isEmpty ? d.serial : d.model)
                                 : '${d.model.isEmpty ? d.serial : d.model} — ${d.state}',
+                            textAlign: TextAlign.left,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),

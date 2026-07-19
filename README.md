@@ -23,19 +23,27 @@ and verifies what landed.
 - **Incremental** — re-runs transfer only changed files (size+mtime
   manifest diff); an unchanged 50 GB folder re-backs-up in seconds moving
   0 bytes
+- **Skip clutter** (optional, off by default) — prune regenerable
+  caches and system cruft (`.thumbnails`, `LOST.DIR`, `Android/data`, …)
+  so they never leave the phone; the glob list is editable in Settings
 - **Mirror or Snapshot layouts** — keep one up-to-date copy, or a dated
   folder per run where unchanged files are NTFS-hardlinked (full history at
   almost no extra disk cost)
 - **Verified** — file counts checked after every run; optional deep verify
   compares md5 of every file on both sides
-- **Explorer drive** — mount the phone as a drive letter (WinFsp) for
-  browsing and grabbing files; optional writable mode (off by default,
-  guarded by a warning)
+- **Explorer drive** — mount the phone as a drive letter (WinFsp) and it
+  opens in File Explorer for browsing and grabbing files; optional writable
+  mode (off by default, guarded by a warning)
 - **Restore** — drag files from Explorer onto the app to push them back to
   the phone
 - **Profiles & scheduling** — save folder selections, re-run in one click,
   or schedule daily backups via Windows Task Scheduler with toast
   notifications
+- **Space at a glance** — the destination drive's free space and the total
+  size of your current selection show under the destination as you tick folders
+- **11 languages** — English, Spanish, German, French, Italian, Portuguese,
+  Polish, Ukrainian, Japanese, Korean, and Chinese; follows Windows by default
+  or pick one in Settings
 - **Wireless** — pair by scanning a QR code (like Android Studio);
   already-paired phones on your network reconnect automatically
 - **Self-contained** — if adb isn't installed, the app downloads Google's

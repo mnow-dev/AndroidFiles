@@ -19,7 +19,7 @@
     --accent: #14833b; --accent-fg: #ffffff; --border: #e2e6ea;
     --callout: #eef6f0; --callout-border: #cfe6d6;
     --warn: #fdf2e9; --warn-border: #f2d3b3; --warn-fg: #8a4b12;
-    --kbd: #eef1f4;
+    --kbd: #eef1f4; --ann: #ff5a1f;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -27,7 +27,7 @@
       --accent: #3ddc84; --accent-fg: #08240f; --border: #2c3338;
       --callout: #16261b; --callout-border: #244d31;
       --warn: #2a2015; --warn-border: #55401f; --warn-fg: #e8b877;
-      --kbd: #2a3037;
+      --kbd: #2a3037; --ann: #ff7a45;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -72,6 +72,24 @@
   @media (max-width: 560px) { nav.toc ol { columns: 1; } }
   nav.toc a { text-decoration: none; }
   nav.toc a:hover { text-decoration: underline; }
+  figure.fig { margin: 24px 0 8px; }
+  figure.fig.narrow { max-width: 560px; margin-left: auto; margin-right: auto; }
+  figure.fig .canvas { position: relative; line-height: 0; }
+  figure.fig .canvas img { width: 100%; height: auto; display: block;
+    border-radius: 12px; border: 1px solid var(--border);
+    box-shadow: 0 16px 40px rgba(0,0,0,.14); }
+  .hl { position: absolute; border: 2.5px solid var(--ann); border-radius: 7px;
+    box-shadow: 0 0 0 2px rgba(0,0,0,.18); pointer-events: none; }
+  .hl .mk { position: absolute; top: 0; left: 0; transform: translate(-52%,-52%); }
+  .mk { display: inline-block; min-width: 22px; height: 22px; padding: 0 5px;
+    border-radius: 999px; background: var(--ann); color: #fff; font-size: 13px;
+    font-weight: 700; line-height: 22px; text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  figcaption { color: var(--muted); font-size: 13.5px; margin-top: 12px; text-align: center; }
+  ol.legend { list-style: none; margin: 14px 0 0; padding: 0; display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 6px 22px; }
+  ol.legend li { position: relative; padding-left: 32px; margin: 5px 0; font-size: 14.5px; }
+  ol.legend .mk { position: absolute; left: 0; top: 0; }
   .btn {
     display: inline-block; padding: 10px 22px; border-radius: 8px;
     text-decoration: none; font-weight: 600; border: 1px solid var(--border);
@@ -106,6 +124,7 @@
       <li><a href="#first">Your first backup</a></li>
       <li><a href="#streamed">Fast, streamed transfers</a></li>
       <li><a href="#incremental">Incremental re-runs</a></li>
+      <li><a href="#clutter">Skip clutter</a></li>
       <li><a href="#layouts">Mirror &amp; Snapshot layouts</a></li>
       <li><a href="#verify">Verification</a></li>
       <li><a href="#drive">The Explorer drive</a></li>
@@ -140,7 +159,30 @@
 
   <h2 id="first">Your first backup</h2>
   <p>The app opens with a folder tree on the left and a backup panel on the
-  right, and shows a three-step checklist until you've done a run:</p>
+  right, and shows a three-step checklist until you've done a run. Here's the
+  window at a glance — the numbers match the steps below it:</p>
+
+  <figure class="fig">
+    <div class="canvas">
+      <img src="screenshot.png" alt="The AndroidFiles main window: a connected phone's folder tree on the left, backup options on the right, and the queue below">
+      <span class="hl" style="left:60.3%;top:5.8%;width:20.8%;height:4.3%"><span class="mk">1</span></span>
+      <span class="hl" style="left:0.5%;top:11.8%;width:22.8%;height:39.2%"><span class="mk">2</span></span>
+      <span class="hl" style="left:41.2%;top:33.3%;width:52.5%;height:5.2%"><span class="mk">3</span></span>
+      <span class="hl" style="left:41.2%;top:39.2%;width:35.4%;height:4.6%"><span class="mk">4</span></span>
+      <span class="hl" style="left:40.0%;top:48.0%;width:58.4%;height:5.6%"><span class="mk">5</span></span>
+      <span class="hl" style="left:80.9%;top:5.8%;width:18.4%;height:4.3%"><span class="mk">6</span></span>
+    </div>
+    <ol class="legend">
+      <li><span class="mk">1</span> <strong>Device picker</strong> — choose the connected phone (USB or Wi-Fi)</li>
+      <li><span class="mk">2</span> <strong>Folder tree</strong> — tick the folders to back up</li>
+      <li><span class="mk">3</span> <strong>Destination</strong> — the folder on your PC to store the backup</li>
+      <li><span class="mk">4</span> <strong>Layout &amp; Incremental</strong> — Mirror/Snapshot, and skip-unchanged</li>
+      <li><span class="mk">5</span> <strong>Back up</strong> — start the run (label updates once folders are ticked)</li>
+      <li><span class="mk">6</span> <strong>Toolbar</strong> — refresh, mount drive, Wi-Fi, log, and Settings</li>
+    </ol>
+    <figcaption>The main window, with a Pixel connected.</figcaption>
+  </figure>
+
   <ol>
     <li><strong>Select your device.</strong> Once the phone is connected and
       authorized, it appears in the device picker at the top. USB and wireless
@@ -164,6 +206,21 @@
   (<code>adb exec-out tar</code>) and pipes it straight to your PC. There are
   no per-file round-trips, so large folders move at full USB-link speed where
   MTP crawls or gives up.</p>
+
+  <figure class="fig">
+    <div class="canvas">
+      <img src="backup.png" alt="A backup job in the queue: /sdcard/DCIM copying, with a progress bar, transfer speed, ETA, file count, and the file currently streaming">
+      <span class="hl" style="left:86.2%;top:15.3%;width:13.3%;height:22.9%"><span class="mk">1</span></span>
+      <span class="hl" style="left:1.8%;top:42.4%;width:70.0%;height:33.9%"><span class="mk">2</span></span>
+      <span class="hl" style="left:1.8%;top:76.3%;width:46.9%;height:15.3%"><span class="mk">3</span></span>
+    </div>
+    <ol class="legend">
+      <li><span class="mk">1</span> <strong>Status &amp; controls</strong> — “copying”, with pause and cancel</li>
+      <li><span class="mk">2</span> <strong>Live progress</strong> — transferred / total, speed, ETA, file count</li>
+      <li><span class="mk">3</span> <strong>Current file</strong> — what's streaming right now</li>
+    </ol>
+    <figcaption>A running backup in the queue.</figcaption>
+  </figure>
   <ul>
     <li><strong>Progress, speed &amp; ETA</strong> update live for the running
       job.</li>
@@ -183,6 +240,21 @@
   <p>In practice an untouched 50&nbsp;GB photo library re-verifies in seconds
   and transfers <em>0 bytes</em> — so running a backup often is cheap. Untick
   the box only if you want to force a full re-copy.</p>
+
+  <h2 id="clutter"><span class="em">🧹</span>Skip clutter</h2>
+  <p>Tick <strong>Skip clutter</strong> (next to Incremental — off by
+  default) to leave regenerable caches and system cruft out of the backup.
+  Skipped files never leave the phone, so it saves transfer time, not just
+  disk. The count shows as "<em>N ignored</em>" during and after a run.</p>
+  <p>The default list — editable under <strong>Settings &rarr; Backups</strong>
+  — covers <code>.thumbnails</code>, <code>.trashed-*</code>,
+  <code>LOST.DIR</code>, <code>.thumbdata*</code>, and
+  <code>Android/data</code> / <code>Android/obb</code> (per-app caches and
+  expansion files, often unreadable anyway). Patterns match any path segment,
+  case-insensitively, with <code>*</code> and <code>?</code> as wildcards, so
+  <code>.thumbnails</code> skips that folder wherever it appears.</p>
+  <div class="callout">Leave it off for a complete, faithful copy; turn it on
+    when you want a leaner backup of just your own content.</div>
 
   <h2 id="layouts"><span class="em">🕘</span>Mirror &amp; Snapshot layouts</h2>
   <p>The <strong>layout</strong> dropdown next to the Back up controls chooses
@@ -208,14 +280,31 @@
     <li>For a stronger guarantee, use <strong>Deep verify</strong> on a finished
       job (the button on its queue row) to compare the <code>md5</code> of every
       file on both sides. It's thorough and therefore slow — reach for it when
-      correctness matters more than time.</li>
+      correctness matters more than time. It shows live progress and an ETA
+      while it hashes the phone and re-reads the local copy.</li>
+    <li>To run that check automatically, tick <strong>Verify after backup</strong>
+      in Options — every run is then deep-verified as soon as it finishes.</li>
   </ul>
 
   <h2 id="drive"><span class="em">🗂️</span>The Explorer drive</h2>
   <p>Beyond backups, you can mount the phone as a real Windows drive letter and
   browse it in File Explorer. Click the <strong>drive</strong> icon in the
   toolbar to mount; the phone's storage appears at the configured letter
-  (<code>P:</code> by default).</p>
+  (<code>P:</code> by default) and opens in a File Explorer window. Click the
+  icon again to unmount.</p>
+
+  <figure class="fig">
+    <div class="canvas">
+      <img src="drive.png" alt="File Explorer showing the phone mounted as drive P: — its folders (DCIM, Download, Pictures, …) listed like any local drive">
+      <span class="hl" style="left:34.3%;top:7.0%;width:9.0%;height:3.7%"><span class="mk">1</span></span>
+      <span class="hl" style="left:24.6%;top:23.0%;width:55.6%;height:58.9%"><span class="mk">2</span></span>
+    </div>
+    <ol class="legend">
+      <li><span class="mk">1</span> <strong>Mounted as a drive</strong> — the phone appears at <code>P:</code> in “This PC”</li>
+      <li><span class="mk">2</span> <strong>Browse &amp; copy</strong> — its folders behave like any drive in Explorer</li>
+    </ol>
+    <figcaption>The phone mounted at P:, in File Explorer.</figcaption>
+  </figure>
   <ul>
     <li><strong>Read-only by default</strong> — browse and copy files off the
       phone safely.</li>
@@ -258,6 +347,21 @@
   <h2 id="wireless"><span class="em">📶</span>Wireless backups</h2>
   <p>No cable required. Click the <strong>Wi-Fi</strong> button in the toolbar
   to open wireless debugging:</p>
+
+  <figure class="fig narrow">
+    <div class="canvas">
+      <img src="wireless.png" alt="The Wireless debugging dialog: a QR code to scan, a list of phones discovered on the network with Connect buttons, and a manual pair/connect option">
+      <span class="hl" style="left:28.7%;top:12.8%;width:43.2%;height:36.4%"><span class="mk">1</span></span>
+      <span class="hl" style="left:3.5%;top:59.7%;width:95.0%;height:15.0%"><span class="mk">2</span></span>
+      <span class="hl" style="left:3.5%;top:75.8%;width:93.3%;height:5.6%"><span class="mk">3</span></span>
+    </div>
+    <ol class="legend">
+      <li><span class="mk">1</span> <strong>QR code</strong> — scan it from the phone's Wireless debugging screen</li>
+      <li><span class="mk">2</span> <strong>Discovered devices</strong> — paired phones reconnect with one click</li>
+      <li><span class="mk">3</span> <strong>Manual pair / connect</strong> — enter an ip:port and code by hand</li>
+    </ol>
+    <figcaption>The wireless pairing dialog.</figcaption>
+  </figure>
   <ol>
     <li>On the phone, enable <kbd>Developer options</kbd> &rarr;
       <kbd>Wireless debugging</kbd> and choose <em>Pair device with QR code</em>.</li>
@@ -271,16 +375,35 @@
   just open the app and back up — cable optional.</p>
 
   <h2 id="settings">Settings &amp; updates</h2>
-  <p>The <strong>gear</strong> icon opens Settings, where you can:</p>
-  <ul>
-    <li>Set or <em>Test</em> the <strong>adb path</strong> (takes effect after
-      an app restart).</li>
-    <li>Choose the <strong>drive letter</strong> for the Explorer drive and
-      point at the drive host if needed.</li>
-    <li>Switch <strong>theme</strong> — Light, Dark, or Follow Windows.</li>
-    <li>Toggle <strong>Check GitHub for new versions on launch</strong>.</li>
-    <li>Opt into the risky <strong>writable drive</strong> mode.</li>
-  </ul>
+  <p>The <strong>gear</strong> icon in the toolbar opens Settings:</p>
+
+  <figure class="fig narrow">
+    <div class="canvas">
+      <img src="settings.png" alt="The AndroidFiles Settings dialog: adb path, Explorer drive host and letter, theme, update check, writable-drive toggle, and version">
+      <span class="hl" style="left:5.9%;top:16.8%;width:88.5%;height:6.3%"><span class="mk">1</span></span>
+      <span class="hl" style="left:5.9%;top:41.2%;width:88.2%;height:5.5%"><span class="mk">2</span></span>
+      <span class="hl" style="left:5.9%;top:52.5%;width:88.2%;height:5.7%"><span class="mk">3</span></span>
+      <span class="hl" style="left:23.7%;top:59.9%;width:65.2%;height:4.6%"><span class="mk">4</span></span>
+      <span class="hl" style="left:5.2%;top:66.6%;width:89.3%;height:9.2%"><span class="mk">5</span></span>
+      <span class="hl" style="left:5.6%;top:80.0%;width:19.4%;height:4.2%"><span class="mk">6</span></span>
+    </div>
+    <ol class="legend">
+      <li><span class="mk">1</span> <strong>adb path</strong> — set it, or <em>Test</em> the current one (applies after a restart)</li>
+      <li><span class="mk">2</span> <strong>Drive letter</strong> — mount point for the Explorer drive</li>
+      <li><span class="mk">3</span> <strong>Theme</strong> — Light, Dark, or Follow Windows</li>
+      <li><span class="mk">4</span> <strong>Check for updates</strong> — ask GitHub on launch</li>
+      <li><span class="mk">5</span> <strong>Writable drive (danger)</strong> — opt in to writing to the phone</li>
+      <li><span class="mk">6</span> <strong>Version</strong> — the installed AndroidFiles version</li>
+    </ol>
+    <figcaption>The Settings dialog.</figcaption>
+  </figure>
+
+  <p>The <strong>Appearance</strong> section also picks the <strong>language</strong>:
+  AndroidFiles is translated into English, Spanish, German, French, Italian,
+  Portuguese, Polish, Ukrainian, Japanese, Korean, and Chinese. It follows
+  Windows by default, or you can choose one. The <strong>About</strong> section
+  lists the open-source licenses.</p>
+
   <p>The installed app checks GitHub for a newer release on launch and, when one
   exists, offers to <strong>download and apply it in place</strong> then relaunch
   — no reinstall. (The portable build tells you an update is out and links you

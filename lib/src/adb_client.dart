@@ -93,6 +93,21 @@ class AdbClient {
     return m == null ? 0 : int.parse(m.group(1)!) * 1024;
   }
 
+  /// Combined size in bytes of several paths (du counts allocated blocks).
+  /// One `du` per call — each path yields its own summary line, which we sum.
+  Future<int> sizeOfAll(String serial, List<String> paths) async {
+    if (paths.isEmpty) return 0;
+    final args = paths.map(shellQuote).join(' ');
+    final r = await _shell(serial, 'du -sk $args',
+        timeout: const Duration(minutes: 5));
+    var total = 0;
+    for (final line in (r.stdout as String).split('\n')) {
+      final m = RegExp(r'^(\d+)').firstMatch(line.trimLeft());
+      if (m != null) total += int.parse(m.group(1)!) * 1024;
+    }
+    return total;
+  }
+
   /// Number of regular files under a path.
   Future<int> fileCount(String serial, String path) async {
     final r = await _shell(serial, 'find ${shellQuote(path)} -type f | wc -l',
@@ -152,14 +167,42 @@ class AdbClient {
   }
 
   /// md5 of every regular file under [path], keyed relative to its parent.
-  Future<Map<String, String>> md5Manifest(String serial, String path) async {
-    final r = await _shell(
-        serial, 'find ${shellQuote(path)} -type f -exec md5sum {} +',
-        timeout: const Duration(minutes: 30));
-    if (r.exitCode != 0) {
-      throw AdbException('md5sum of $path failed: ${r.stderr}'.trim());
+  /// Streams the device output, calling [onProgress] with the running file
+  /// count as the phone hashes each one (the slow first half of deep verify),
+  /// then parses the collected lines.
+  Future<Map<String, String>> md5Manifest(String serial, String path,
+      {void Function(int hashed, String? rel)? onProgress}) async {
+    final proc = await Process.start(adbPath, [
+      '-s', serial, 'shell',
+      'find ${shellQuote(path)} -type f -exec md5sum {} +',
+    ]);
+    final out = StringBuffer();
+    final err = StringBuffer();
+    final prefix = '${dirname(path)}/';
+    var count = 0;
+    await Future.wait([
+      proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .forEach((line) {
+        out.writeln(line); // one md5sum line == one hashed file
+        // "<hash>  <abs path>" — hand the relative path up so the caller can
+        // weight progress by this file's size, not just its count.
+        String? rel;
+        final sp = line.indexOf('  ');
+        if (sp > 0) {
+          final abs = line.substring(sp + 2);
+          if (abs.startsWith(prefix)) rel = abs.substring(prefix.length);
+        }
+        onProgress?.call(++count, rel);
+      }),
+      proc.stderr.transform(utf8.decoder).forEach(err.write),
+    ]);
+    final exit = await proc.exitCode;
+    if (exit != 0) {
+      throw AdbException('md5sum of $path failed ($exit): ${err.toString().trim()}');
     }
-    return parseMd5Manifest(r.stdout as String, dirname(path));
+    return parseMd5Manifest(out.toString(), dirname(path));
   }
 
   /// Wireless devices discovered via mDNS (`adb mdns services`).

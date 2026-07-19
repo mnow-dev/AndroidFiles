@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show TextEditingController;
+import 'package:flutter/widgets.dart' show Locale, TextEditingController;
 import 'package:local_notifier/local_notifier.dart';
 
 import 'adb_client.dart';
@@ -11,6 +11,7 @@ import 'adb_installer.dart';
 import 'backup_engine.dart';
 import 'drive_manager.dart';
 import 'models.dart';
+import 'selection.dart';
 import 'settings.dart';
 import 'update_checker.dart';
 import 'updater.dart';
@@ -31,6 +32,10 @@ class AppController extends ChangeNotifier {
   final Set<String> expanded = {};
   final Set<String> loading = {};
   final Set<String> checked = {};
+
+  /// Paths carved back OUT of a checked ancestor's subtree (unticking a child
+  /// under a selected folder). The nearest checked/excluded prefix wins.
+  final Set<String> excluded = {};
   final Set<String> _prefetched = {};
 
   final List<String> logLines = [];
@@ -254,6 +259,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _sizeDebounce?.cancel();
     destination.dispose();
     super.dispose();
   }
@@ -268,6 +274,30 @@ class AppController extends ChangeNotifier {
   bool get incremental => settings.incremental;
   set incremental(bool v) {
     settings.incremental = v;
+    unawaited(settings.save());
+    notifyListeners();
+  }
+
+  bool get skipClutter => settings.skipClutter;
+  set skipClutter(bool v) {
+    settings.skipClutter = v;
+    unawaited(settings.save());
+    notifyListeners();
+  }
+
+  bool get autoVerify => settings.autoVerify;
+  set autoVerify(bool v) {
+    settings.autoVerify = v;
+    unawaited(settings.save());
+    notifyListeners();
+  }
+
+  /// UI locale, or null to follow the system. Set via [localeCode].
+  Locale? get locale =>
+      settings.locale.isEmpty ? null : Locale(settings.locale);
+  String get localeCode => settings.locale;
+  set localeCode(String v) {
+    settings.locale = v;
     unawaited(settings.save());
     notifyListeners();
   }
@@ -361,6 +391,7 @@ class AppController extends ChangeNotifier {
     final wasChecked = {...checked};
     _resetTree();
     checked.addAll(wasChecked); // a refresh shouldn't drop the selection
+    _scheduleSelectionSize();
     notifyListeners();
     unawaited(expand(rootPath));
   }
@@ -370,7 +401,12 @@ class AppController extends ChangeNotifier {
     expanded.clear();
     loading.clear();
     checked.clear();
+    excluded.clear();
     _prefetched.clear();
+    _sizeDebounce?.cancel();
+    _sizeToken++;
+    selectionBytes = 0;
+    measuringSelection = false;
   }
 
   /// True once we know [path] is an empty directory (drives the chevron).
@@ -426,14 +462,96 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether [path] is in the backup (see selection.dart for the rule).
+  bool isSelected(String path) => isPathSelected(path, checked, excluded);
+
   void toggleChecked(RemoteEntry entry) {
-    if (checked.contains(entry.path)) {
-      checked.remove(entry.path);
-    } else {
-      checked.add(entry.path);
-      // A parent selection covers its children.
-      checked.removeWhere((p) => p != entry.path && p.startsWith('${entry.path}/'));
+    togglePath(entry.path, checked, excluded);
+    _scheduleSelectionSize();
+    notifyListeners();
+  }
+
+  // --- selection size (on-device `du` of the ticked paths) ---
+
+  /// Bytes the current selection occupies on the device, or null while it's
+  /// unknown (measuring, or the last measure failed). 0 when nothing is ticked.
+  int? selectionBytes = 0;
+  bool measuringSelection = false;
+  Timer? _sizeDebounce;
+  int _sizeToken = 0;
+
+  /// Re-measure the selection after a short debounce (toggles come in bursts).
+  void _scheduleSelectionSize() {
+    _sizeDebounce?.cancel();
+    _sizeToken++; // invalidate any in-flight measure
+    if (checked.isEmpty) {
+      selectionBytes = 0;
+      measuringSelection = false;
+      return;
     }
+    selectionBytes = null;
+    measuringSelection = true;
+    final token = _sizeToken;
+    _sizeDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _measureSelection(token),
+    );
+  }
+
+  Future<void> _measureSelection(int token) async {
+    final serial = selected?.serial;
+    if (serial == null) return;
+    final checkedPaths = checked.toList();
+    final excludedPaths = excluded.toList();
+    try {
+      var total = await adb.sizeOfAll(serial, checkedPaths);
+      if (excludedPaths.isNotEmpty) {
+        total -= await adb.sizeOfAll(serial, excludedPaths);
+      }
+      if (token != _sizeToken) return; // superseded by a newer toggle
+      selectionBytes = total < 0 ? 0 : total;
+    } catch (_) {
+      if (token != _sizeToken) return;
+      selectionBytes = null; // leave it blank rather than show a wrong number
+    } finally {
+      if (token == _sizeToken) {
+        measuringSelection = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Whether the root's top-level items are loaded (so select-all is possible).
+  bool get canSelectAll => (children[rootPath] ?? const []).isNotEmpty;
+
+  /// Whether every top-level item under the root is selected.
+  bool get allSelected {
+    final roots = children[rootPath];
+    if (roots == null || roots.isEmpty) return false;
+    return roots.every((e) => checked.contains(e.path));
+  }
+
+  /// One control: select everything, or clear it if everything is selected.
+  void toggleAll() => allSelected ? uncheckAll() : checkAll();
+
+  /// Select every top-level item under the root (each covers its own subtree).
+  void checkAll() {
+    final roots = children[rootPath];
+    if (roots == null || roots.isEmpty) return;
+    excluded.clear();
+    checked
+      ..clear()
+      ..addAll(roots.map((e) => e.path));
+    _scheduleSelectionSize();
+    notifyListeners();
+  }
+
+  /// Clear the whole selection.
+  void uncheckAll() {
+    if (checked.isEmpty && excluded.isEmpty) return;
+    checked.clear();
+    excluded.clear();
+    _scheduleSelectionSize();
     notifyListeners();
   }
 
@@ -486,12 +604,21 @@ class AppController extends ChangeNotifier {
     }
 
     for (final e in entries) {
+      // Excluded descendants of this entry become path-shaped ignore patterns
+      // (relative to the source's parent, matching the manifest keys).
+      final prefix = AdbClient.dirname(e.path).length + 1;
       final job = BackupJob(
         source: e,
         serial: serial,
         destDir: targetDir,
         baseDir: baseDir,
         incremental: incremental,
+        ignore: [
+          if (settings.skipClutter) ...settings.clutterPatterns,
+          for (final x in excluded)
+            if (x.startsWith('${e.path}/')) x.substring(prefix),
+        ],
+        autoVerify: settings.autoVerify,
       );
       if (layout == BackupLayout.snapshot) _snapshotJobs.add(job);
       engine.enqueue(job);
@@ -524,6 +651,23 @@ class AppController extends ChangeNotifier {
       return;
     }
     await drive.mount(serial, settings.adbPath);
+    if (drive.mounted) unawaited(_revealMount());
+  }
+
+  /// Pop open the freshly-mounted drive in Explorer. Without this the mount is
+  /// silent — the letter just appears, with no window — which reads as "nothing
+  /// happened". WinFsp needs a moment before the letter is browsable, so wait
+  /// for it rather than racing Explorer to a not-yet-ready drive; bail if the
+  /// host dies early (e.g. missing .NET runtime), so we never open a broken one.
+  Future<void> _revealMount() async {
+    final root = '${drive.mountPoint}\\';
+    for (var i = 0; i < 20 && drive.mounted; i++) {
+      if (Directory(root).existsSync()) {
+        await Process.run('explorer.exe', [root]);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
   }
 
   Future<void> wifiPair(String hostPort, String code) async {
@@ -669,9 +813,11 @@ class AppController extends ChangeNotifier {
     checked
       ..clear()
       ..addAll(p.paths);
+    excluded.clear();
     destination.text = p.destination;
     settings.layout = p.layout;
     settings.incremental = p.incremental;
+    _scheduleSelectionSize();
     log('Applied profile "${p.name}" (${p.paths.length} folders)');
     notifyListeners();
   }

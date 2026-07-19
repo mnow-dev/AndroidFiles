@@ -60,3 +60,6 @@ app.*.map.json
 
 # Contact sheet from `dart run tool/gen_icon.dart --preview`
 /preview_icon.png
+
+# Generated localizations (flutter gen-l10n, generate: true)
+/lib/l10n/app_localizations*.dart

@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:local_notifier/local_notifier.dart';
 
+import 'l10n/app_localizations.dart';
 import 'src/app_controller.dart';
 import 'src/settings.dart';
 import 'src/ui/home_screen.dart';
@@ -74,6 +76,15 @@ class AndroidFilesApp extends StatelessWidget {
       builder: (context, _) => FluentApp(
         title: 'AndroidFiles',
         debugShowCheckedModeBanner: false,
+        locale: controller.locale,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          FluentLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
         themeMode: switch (controller.themeMode) {
           'dark' => ThemeMode.dark,
           'system' => ThemeMode.system,
