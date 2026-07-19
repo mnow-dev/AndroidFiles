@@ -79,6 +79,9 @@ accept the prompt. (Or pair wirelessly via the Wi-Fi button — no cable.)
 2. Pick a destination folder on your PC.
 3. Press **Back up**. That's it — re-running later only transfers changes.
 
+For a walkthrough of every feature, see the
+**[User guide](https://mnow-dev.github.io/AndroidFiles/guide.html)**.
+
 ## Status
 
 AndroidFiles is early software (v0.1.0) and in active use, but it reads

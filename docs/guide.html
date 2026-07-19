@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AndroidFiles — User Guide</title>
+<meta name="description" content="How to use every AndroidFiles feature: fast streamed backups, incremental runs, snapshots, verification, the Explorer drive, restore, profiles, scheduling, and wireless.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="AndroidFiles — User Guide">
+<meta property="og:description" content="Step-by-step guide to every AndroidFiles feature, from your first backup to wireless scheduled runs.">
+<meta property="og:url" content="https://mnow-dev.github.io/AndroidFiles/guide.html">
+<meta property="og:image" content="https://mnow-dev.github.io/AndroidFiles/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AndroidFiles — User Guide">
+<meta name="twitter:image" content="https://mnow-dev.github.io/AndroidFiles/social-preview.png">
+<style>
+  :root {
+    --bg: #f7f8f9; --fg: #1a1d20; --muted: #5c6670; --card: #ffffff;
+    --accent: #14833b; --accent-fg: #ffffff; --border: #e2e6ea;
+    --callout: #eef6f0; --callout-border: #cfe6d6;
+    --warn: #fdf2e9; --warn-border: #f2d3b3; --warn-fg: #8a4b12;
+    --kbd: #eef1f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191c; --fg: #e8eaec; --muted: #9aa4ad; --card: #1f2428;
+      --accent: #3ddc84; --accent-fg: #08240f; --border: #2c3338;
+      --callout: #16261b; --callout-border: #244d31;
+      --warn: #2a2015; --warn-border: #55401f; --warn-fg: #e8b877;
+      --kbd: #2a3037;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 16px/1.65 "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); }
+  .topbar { padding: 22px 0; font-size: 14px; }
+  .topbar a { color: var(--muted); text-decoration: none; }
+  .topbar a:hover { color: var(--fg); }
+  header.hero { padding: 20px 0 8px; }
+  h1 { font-size: 36px; letter-spacing: -1px; }
+  h1 .accent { color: var(--accent); }
+  .tagline { font-size: 18px; color: var(--muted); margin: 10px 0 8px; }
+  h2 { font-size: 24px; margin: 44px 0 10px; letter-spacing: -.3px;
+       padding-top: 12px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: 0; }
+  h2 .em { margin-right: 8px; }
+  h3 { font-size: 17px; margin: 22px 0 6px; }
+  p { margin: 10px 0; }
+  ol, ul { margin: 10px 0 10px 22px; }
+  li { margin: 6px 0; }
+  .lead { color: var(--muted); }
+  code, kbd { font-family: "Cascadia Code", Consolas, monospace; font-size: .9em; }
+  kbd { background: var(--kbd); border: 1px solid var(--border); border-radius: 5px;
+        padding: 1px 6px; white-space: nowrap; }
+  .callout, .warn {
+    border: 1px solid var(--callout-border); background: var(--callout);
+    border-radius: 10px; padding: 12px 16px; margin: 16px 0; font-size: 14.5px;
+  }
+  .warn { border-color: var(--warn-border); background: var(--warn); color: var(--warn-fg); }
+  .callout strong, .warn strong { display: inline; }
+  nav.toc {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 22px; margin: 24px 0 8px;
+  }
+  nav.toc h2 { font-size: 15px; border: 0; margin: 0 0 8px; padding: 0;
+               text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  nav.toc ol { columns: 2; column-gap: 28px; margin-left: 18px; }
+  @media (max-width: 560px) { nav.toc ol { columns: 1; } }
+  nav.toc a { text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  .btn {
+    display: inline-block; padding: 10px 22px; border-radius: 8px;
+    text-decoration: none; font-weight: 600; border: 1px solid var(--border);
+    color: var(--fg); background: var(--card); margin: 4px 8px 4px 0;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+  .btn:hover { filter: brightness(1.05); }
+  .cta { margin: 40px 0 8px; }
+  footer { border-top: 1px solid var(--border); padding: 28px 0 48px; margin-top: 48px;
+           color: var(--muted); font-size: 14px; text-align: center; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar"><a href="./">&larr; AndroidFiles home</a></div>
+
+  <header class="hero">
+    <h1>Android<span class="accent">Files</span> — User Guide</h1>
+    <p class="tagline">Everything the app does, and exactly how to do it.</p>
+  </header>
+
+  <p class="lead">AndroidFiles backs up your Android phone to your Windows PC
+  over ADB — the same channel developer tools use — instead of MTP (the
+  "phone appears in Explorer" method that stalls on big folders). This guide
+  walks through each feature in the order you'll meet them.</p>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#setup">Before you start</a></li>
+      <li><a href="#first">Your first backup</a></li>
+      <li><a href="#streamed">Fast, streamed transfers</a></li>
+      <li><a href="#incremental">Incremental re-runs</a></li>
+      <li><a href="#layouts">Mirror &amp; Snapshot layouts</a></li>
+      <li><a href="#verify">Verification</a></li>
+      <li><a href="#drive">The Explorer drive</a></li>
+      <li><a href="#restore">Restoring files</a></li>
+      <li><a href="#profiles">Profiles &amp; scheduling</a></li>
+      <li><a href="#wireless">Wireless backups</a></li>
+      <li><a href="#settings">Settings &amp; updates</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="setup">Before you start</h2>
+  <p>Two one-time steps get a phone talking to the app:</p>
+  <ol>
+    <li><strong>Install AndroidFiles.</strong> Download
+      <code>AndroidFiles-win-Setup.exe</code> from the
+      <a href="https://github.com/mnow-dev/AndroidFiles/releases/latest">releases page</a>
+      and run it. It installs per-user with no admin prompt and keeps itself
+      up to date. (Prefer no installer? The portable ZIP on the same page runs
+      from any folder.)</li>
+    <li><strong>Turn on USB debugging.</strong> On the phone, open
+      <kbd>Settings</kbd> &rarr; <kbd>About phone</kbd> and tap <em>Build
+      number</em> seven times to unlock <em>Developer options</em>, then enable
+      <kbd>Developer options</kbd> &rarr; <kbd>USB debugging</kbd>. Plug the
+      phone in and tap <em>Allow</em> on the "Allow USB debugging?" prompt.</li>
+  </ol>
+  <div class="callout"><strong>No adb installed?</strong> You don't need it.
+    If AndroidFiles can't find adb, it downloads Google's official
+    platform-tools for you on first launch.</div>
+  <div class="callout"><strong>First-run warning.</strong> The app isn't
+    code-signed yet, so Windows SmartScreen may say "Windows protected your
+    PC." Click <em>More info</em> &rarr; <em>Run anyway</em>.</div>
+
+  <h2 id="first">Your first backup</h2>
+  <p>The app opens with a folder tree on the left and a backup panel on the
+  right, and shows a three-step checklist until you've done a run:</p>
+  <ol>
+    <li><strong>Select your device.</strong> Once the phone is connected and
+      authorized, it appears in the device picker at the top. USB and wireless
+      devices are marked with their own icons.</li>
+    <li><strong>Tick the folders to back up</strong> in the tree on the left —
+      for example <code>/sdcard/DCIM</code>, <code>/sdcard/Download</code>, or
+      whole <code>/sdcard</code>. Use the <em>Refresh</em> button in the
+      toolbar if the tree looks stale.</li>
+    <li><strong>Choose a destination</strong> folder on your PC in the
+      <em>Destination</em> box (or the folder-picker beside it), then press
+      <strong>Back up</strong>.</li>
+  </ol>
+  <p>Each selection becomes a job in the queue on the right, with live
+  progress, transfer speed, and an ETA. That's the whole loop — everything
+  below refines it.</p>
+
+  <h2 id="streamed"><span class="em">⚡</span>Fast, streamed transfers</h2>
+  <p>This is the reason the app exists, and it needs no configuration. Instead
+  of copying file-by-file the way MTP does, AndroidFiles has the phone pack
+  each folder into a single continuous <code>tar</code> stream
+  (<code>adb exec-out tar</code>) and pipes it straight to your PC. There are
+  no per-file round-trips, so large folders move at full USB-link speed where
+  MTP crawls or gives up.</p>
+  <ul>
+    <li><strong>Progress, speed &amp; ETA</strong> update live for the running
+      job.</li>
+    <li><strong>Pause / resume</strong> a running job from its row in the
+      queue.</li>
+    <li>A cancelled run <strong>never leaves partial files</strong> behind.</li>
+    <li>Filenames with non-ASCII characters land correctly — extraction is done
+      natively rather than through Windows' <code>bsdtar</code>, which mangles
+      UTF-8 names.</li>
+  </ul>
+
+  <h2 id="incremental"><span class="em">♻️</span>Incremental re-runs</h2>
+  <p>Leave <strong>Incremental (skip unchanged)</strong> ticked (it's on by
+  default) and each re-run transfers only what actually changed. AndroidFiles
+  compares a size + modified-time manifest of the phone against what's already
+  on disk and moves just the differences.</p>
+  <p>In practice an untouched 50&nbsp;GB photo library re-verifies in seconds
+  and transfers <em>0 bytes</em> — so running a backup often is cheap. Untick
+  the box only if you want to force a full re-copy.</p>
+
+  <h2 id="layouts"><span class="em">🕘</span>Mirror &amp; Snapshot layouts</h2>
+  <p>The <strong>layout</strong> dropdown next to the Back up controls chooses
+  how runs are stored:</p>
+  <ul>
+    <li><strong>Mirror</strong> — keeps one up-to-date copy in the destination.
+      Each run updates that single copy. Best when you just want "a current
+      backup."</li>
+    <li><strong>Snapshot</strong> — creates a new dated folder for every run,
+      so you can go back to how things looked on any date. Unchanged files are
+      NTFS-hardlinked to the previous snapshot, so months of history cost
+      almost no extra disk space — only changed files take new bytes.</li>
+  </ul>
+  <div class="callout">Snapshot pairs naturally with incremental and daily
+    scheduling: a dated point-in-time backup every day, for the disk cost of
+    just what changed.</div>
+
+  <h2 id="verify"><span class="em">✅</span>Verification</h2>
+  <p>AndroidFiles checks that a backup actually landed:</p>
+  <ul>
+    <li><strong>Every run</strong> verifies that the file count on disk matches
+      the phone before it's marked complete.</li>
+    <li>For a stronger guarantee, use <strong>Deep verify</strong> on a finished
+      job (the button on its queue row) to compare the <code>md5</code> of every
+      file on both sides. It's thorough and therefore slow — reach for it when
+      correctness matters more than time.</li>
+  </ul>
+
+  <h2 id="drive"><span class="em">🗂️</span>The Explorer drive</h2>
+  <p>Beyond backups, you can mount the phone as a real Windows drive letter and
+  browse it in File Explorer. Click the <strong>drive</strong> icon in the
+  toolbar to mount; the phone's storage appears at the configured letter
+  (<code>P:</code> by default).</p>
+  <ul>
+    <li><strong>Read-only by default</strong> — browse and copy files off the
+      phone safely.</li>
+    <li><strong>Writable mode</strong> is opt-in under Settings and clearly
+      marked as risky.</li>
+  </ul>
+  <div class="warn"><strong>Writable drive is dangerous.</strong> With it on,
+    files you delete or overwrite through the drive letter are deleted or
+    overwritten <em>on the phone</em>, with no recycle bin. Leave it read-only
+    unless you specifically need to change files on the device.</div>
+  <div class="callout"><strong>Needs WinFsp.</strong> The Explorer drive relies
+    on the free <a href="https://winfsp.dev/rel/">WinFsp</a> driver. Install it
+    once; every other feature works without it.</div>
+
+  <h2 id="restore"><span class="em">↩️</span>Restoring files</h2>
+  <p>To push files back onto the phone, <strong>drag them from Explorer and drop
+  them onto the AndroidFiles window</strong>. A dialog asks which folder on the
+  device to place them in (defaulting to a sensible target), and warns that
+  existing files with the same names will be overwritten. Confirm with
+  <strong>Push</strong>.</p>
+  <div class="warn"><strong>Restore writes to your phone.</strong> As with the
+    writable drive, pushes overwrite same-named files on the device. Double-check
+    the target folder before confirming.</div>
+
+  <h2 id="profiles"><span class="em">💾</span>Profiles &amp; scheduling</h2>
+  <p>Once you've picked a good set of folders, save it so you never have to
+  re-tick them:</p>
+  <ol>
+    <li>With folders selected, use <strong>Save profile</strong> in the PROFILE
+      section and give it a name.</li>
+    <li>Later, pick it from <strong>Load a saved profile</strong> to restore
+      that exact selection, then press Back up — a one-click re-run.</li>
+    <li>To automate it, open the <strong>schedule</strong> control for the
+      active profile and set a daily time (<kbd>HH:MM</kbd>, 24-hour).</li>
+  </ol>
+  <p>Scheduled backups run via Windows Task Scheduler while you're logged in and
+  raise a toast notification when they finish. The phone just needs to be
+  connected (USB or Wi-Fi) at that time.</p>
+
+  <h2 id="wireless"><span class="em">📶</span>Wireless backups</h2>
+  <p>No cable required. Click the <strong>Wi-Fi</strong> button in the toolbar
+  to open wireless debugging:</p>
+  <ol>
+    <li>On the phone, enable <kbd>Developer options</kbd> &rarr;
+      <kbd>Wireless debugging</kbd> and choose <em>Pair device with QR code</em>.</li>
+    <li><strong>Scan the QR code</strong> the app shows (the same flow Android
+      Studio uses). Once paired, the phone connects over the network.</li>
+    <li>You can also pair or connect manually by entering an
+      <code>ip:port</code> and pairing code under <em>Manual pair / connect</em>.</li>
+  </ol>
+  <p>Phones you've already paired are <strong>rediscovered and reconnected
+  automatically</strong> when they're on the same network, so day-to-day you
+  just open the app and back up — cable optional.</p>
+
+  <h2 id="settings">Settings &amp; updates</h2>
+  <p>The <strong>gear</strong> icon opens Settings, where you can:</p>
+  <ul>
+    <li>Set or <em>Test</em> the <strong>adb path</strong> (takes effect after
+      an app restart).</li>
+    <li>Choose the <strong>drive letter</strong> for the Explorer drive and
+      point at the drive host if needed.</li>
+    <li>Switch <strong>theme</strong> — Light, Dark, or Follow Windows.</li>
+    <li>Toggle <strong>Check GitHub for new versions on launch</strong>.</li>
+    <li>Opt into the risky <strong>writable drive</strong> mode.</li>
+  </ul>
+  <p>The installed app checks GitHub for a newer release on launch and, when one
+  exists, offers to <strong>download and apply it in place</strong> then relaunch
+  — no reinstall. (The portable build tells you an update is out and links you
+  to the download.) The current version is shown at the bottom of the Settings
+  dialog.</p>
+
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download for Windows</a>
+    <a class="btn" href="./">Back to home</a>
+    <a class="btn" href="https://github.com/mnow-dev/AndroidFiles">View on GitHub</a>
+  </div>
+
+  <footer>
+    MIT licensed · <a href="https://github.com/mnow-dev/AndroidFiles">Source on GitHub</a> ·
+    Explorer drive via <a href="https://winfsp.dev">WinFsp</a>;
+    updates via <a href="https://velopack.io">Velopack</a>.
+  </footer>
+</div>
+<!-- Cloudflare Web Analytics (cookieless, no PII) -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "bf8d5750dac649b6a8cc711758d8e76d"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
