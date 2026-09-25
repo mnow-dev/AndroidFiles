@@ -126,12 +126,12 @@ class TarExtractor {
     final abs = '$destDir\\$rel';
 
     if (type == 0x35 /* '5' directory */) {
-      await Directory(abs).create(recursive: true);
+      await _ensureDir(Directory(abs));
       return;
     }
     if (type == 0x30 /* '0' */ || type == 0 /* legacy regular file */) {
       final f = File(abs);
-      await f.parent.create(recursive: true);
+      await _ensureDir(f.parent);
       _out = await f.open(mode: FileMode.write);
       _outPath = abs;
       _outMtime =
@@ -195,6 +195,20 @@ class TarExtractor {
         }
       }
       off += len;
+    }
+  }
+
+  /// Create [d] and its parents, tolerating a concurrent creator.
+  ///
+  /// A sharded transfer runs several extractors over one destination tree, and
+  /// recursive create is not atomic: two of them reaching the same new folder
+  /// together can leave one holding an "already exists" error for a directory
+  /// that is, by then, exactly what it wanted.
+  static Future<void> _ensureDir(Directory d) async {
+    try {
+      await d.create(recursive: true);
+    } on FileSystemException {
+      if (!await d.exists()) rethrow;
     }
   }
 

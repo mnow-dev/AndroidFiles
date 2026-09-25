@@ -1,0 +1,30 @@
+{
+    "version": "0.1.4",
+    "description": "Fast, free Android phone backups for Windows over ADB — incremental, verified, dated snapshots, and a mount-as-a-drive mode.",
+    "homepage": "https://github.com/mnow-dev/AndroidFiles",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/mnow-dev/AndroidFiles/releases/download/v0.1.4/AndroidFiles-v0.1.4-windows-x64.zip",
+            "hash": "c12d5e9b1bd53f180a5cf566d8ed373e9cb6ebb053156398c37b27a80481f36d"
+        }
+    },
+    "bin": "android_files.exe",
+    "shortcuts": [
+        [
+            "android_files.exe",
+            "AndroidFiles"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/mnow-dev/AndroidFiles/releases/download/v$version/AndroidFiles-v$version-windows-x64.zip"
+            }
+        },
+        "hash": {
+            "url": "$url.sha256"
+        }
+    }
+}

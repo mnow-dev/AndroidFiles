@@ -45,7 +45,9 @@ and verifies what landed.
   Polish, Ukrainian, Japanese, Korean, and Chinese; follows Windows by default
   or pick one in Settings
 - **Wireless** — pair by scanning a QR code (like Android Studio);
-  already-paired phones on your network reconnect automatically
+  already-paired phones on your network reconnect automatically. Wireless
+  transfers are split across 8 parallel streams, about 3x faster than a
+  single adb stream over Wi-Fi
 - **Self-contained** — if adb isn't installed, the app downloads Google's
   platform-tools automatically
 - **Correct with non-ASCII filenames** — tar extraction is done natively
@@ -56,7 +58,9 @@ and verifies what landed.
 **Installer (recommended):** download `AndroidFiles-win-Setup.exe` from
 [Releases](../../releases/latest) and run it. It installs per-user (no admin
 prompt) and updates itself from GitHub — when a new version ships, the app
-offers to download and apply it in place.
+offers to download and apply it in place. (On v0.1.3 or v0.1.4, if clicking
+**Update** does nothing, close the app, run `adb kill-server`, and run the new
+Setup.exe once; from v0.1.5 on, in-app updates work again.)
 
 **Portable:** prefer no installer? Grab the ZIP from the same page, extract it
 anywhere, and run `android_files.exe`. Portable builds don't self-update, but

@@ -54,6 +54,11 @@ class Settings {
   /// stable; wireless ip:port ones change per boot, so they simply won't match.
   String lastDeviceSerial;
 
+  /// Version an in-place update was started for, set just before the app
+  /// exits to let it apply. The apply runs after we are gone, so if the next
+  /// launch is still older than this, it failed and the user must be told.
+  String pendingUpdate;
+
   BackupLayout layout;
   bool incremental;
   String driveExePath;
@@ -87,12 +92,19 @@ class Settings {
   /// Glob patterns pruned when [skipClutter] is on; user-editable in Settings.
   List<String> clutterPatterns;
 
+  /// Concurrent tar streams for wireless transfers (1 = off, max 16). One
+  /// stream over Wi-Fi idles waiting on acks; 8 measured ~3.5x faster and is
+  /// where the gain plateaus. USB transfers ignore this — see
+  /// BackupEngine._streamCount.
+  int parallelStreams;
+
   final List<Profile> profiles;
 
   Settings({
     required this.adbPath,
     this.lastDestination = '',
     this.lastDeviceSerial = '',
+    this.pendingUpdate = '',
     this.layout = BackupLayout.mirror,
     this.incremental = true,
     String? driveExePath,
@@ -105,6 +117,7 @@ class Settings {
     this.checkForUpdates = true,
     this.skipClutter = false,
     this.autoVerify = false,
+    this.parallelStreams = 8,
     List<String>? clutterPatterns,
     List<Profile>? profiles,
   })  : driveExePath = driveExePath ?? defaultDriveExePath(),
@@ -151,6 +164,7 @@ class Settings {
         if (saved != null && await File(saved).exists()) settings.adbPath = saved;
         settings.lastDestination = json['lastDestination'] as String? ?? '';
         settings.lastDeviceSerial = json['lastDeviceSerial'] as String? ?? '';
+        settings.pendingUpdate = json['pendingUpdate'] as String? ?? '';
         settings.layout =
             BackupLayout.values.asNameMap()[json['layout']] ?? BackupLayout.mirror;
         settings.incremental = json['incremental'] as bool? ?? true;
@@ -167,6 +181,8 @@ class Settings {
         settings.checkForUpdates = json['checkForUpdates'] as bool? ?? true;
         settings.skipClutter = json['skipClutter'] as bool? ?? false;
         settings.autoVerify = json['autoVerify'] as bool? ?? false;
+        settings.parallelStreams =
+            ((json['parallelStreams'] as num?)?.toInt() ?? 8).clamp(1, 16);
         final cp = json['clutterPatterns'];
         if (cp is List) settings.clutterPatterns = cp.cast<String>();
         for (final p in (json['profiles'] as List? ?? const [])) {
@@ -186,6 +202,7 @@ class Settings {
       'adbPath': adbPath,
       'lastDestination': lastDestination,
       'lastDeviceSerial': lastDeviceSerial,
+      'pendingUpdate': pendingUpdate,
       'layout': layout.name,
       'incremental': incremental,
       'driveExePath': driveExePath,
@@ -198,6 +215,7 @@ class Settings {
       'checkForUpdates': checkForUpdates,
       'skipClutter': skipClutter,
       'autoVerify': autoVerify,
+      'parallelStreams': parallelStreams,
       'clutterPatterns': clutterPatterns,
       'profiles': [for (final p in profiles) p.toJson()],
     }));

@@ -661,6 +661,17 @@ Future<void> showUpdateDialog(BuildContext context, AppController app) async {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(l.runningCurrent(appVersion)),
+              if (app.updateError != null && !installing) ...[
+                const SizedBox(height: 10),
+                Text(
+                  l.updateFailed,
+                  style: TextStyle(
+                    color: FluentTheme.of(ctx)
+                        .resources
+                        .systemFillColorCritical,
+                  ),
+                ),
+              ],
               if (installing) ...[
                 const SizedBox(height: 14),
                 ProgressBar(value: progress.toDouble()),

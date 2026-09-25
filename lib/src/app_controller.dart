@@ -20,7 +20,8 @@ import 'updater.dart';
 class AppController extends ChangeNotifier {
   final Settings settings;
   late final AdbClient adb = AdbClient(settings.adbPath);
-  late final BackupEngine engine = BackupEngine(adb, log: log);
+  late final BackupEngine engine =
+      BackupEngine(adb, log: log, parallelStreams: settings.parallelStreams);
   late final DriveManager drive = DriveManager(settings: settings, log: log);
 
   static const rootPath = '/sdcard';
@@ -52,6 +53,7 @@ class AppController extends ChangeNotifier {
     destination.addListener(notifyListeners); // keeps the Run button state fresh
     unawaited(_ensureAdb());
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollDevices());
+    _checkPendingUpdate();
     if (settings.checkForUpdates) unawaited(_checkForUpdate());
   }
 
@@ -63,6 +65,25 @@ class AppController extends ChangeNotifier {
 
   /// 0..100 while an in-place update is downloading; null otherwise.
   int? updateProgress;
+
+  /// Set when an in-place update failed, so the update dialog can say so
+  /// rather than looking like the button did nothing.
+  String? updateError;
+
+  /// The apply step runs after this app has exited, so its failure can only
+  /// be noticed on the relaunch that follows: still older than the version we
+  /// left to install means it didn't take.
+  void _checkPendingUpdate() {
+    final pending = settings.pendingUpdate;
+    if (pending.isEmpty) return;
+    settings.pendingUpdate = '';
+    unawaited(settings.save());
+    if (UpdateChecker.isRemoteNewer(pending, appVersion)) {
+      updateError = 'Installing $pending did not complete';
+      log('Update to $pending failed to apply; still running $appVersion. '
+          'Details: %LOCALAPPDATA%\\velopack\\velopack_AndroidFiles.log');
+    }
+  }
 
   Future<void> _checkForUpdate() async {
     final info = await UpdateChecker.latestIfNewer();
@@ -85,17 +106,30 @@ class AppController extends ChangeNotifier {
     if (info == null || updateProgress != null) return;
     if (await Updater.isManagedInstall) {
       updateProgress = 0;
+      updateError = null;
       notifyListeners();
-      final applied = await Updater.applyAndRestart(
-        appPid: pid,
-        onProgress: (p) {
-          updateProgress = p;
-          notifyListeners();
-        },
-        onExiting: () async {
-          await drive.unmount(); // null-safe; frees the P: mount before restart
-        },
-      );
+      var applied = false;
+      try {
+        applied = await Updater.applyAndRestart(
+          appPid: pid,
+          onProgress: (p) {
+            updateProgress = p;
+            notifyListeners();
+          },
+          onExiting: () async {
+            settings.pendingUpdate = info.version;
+            await settings.save();
+            await drive.unmount(); // null-safe; frees the P: mount before restart
+            // An adb server started by an older build may still have its
+            // working directory in current\, which blocks the swap. The app
+            // reconnects known wireless devices on relaunch.
+            await adb.killServer();
+          },
+        );
+      } on UpdateFailed catch (e) {
+        updateError = e.message;
+        log('Update failed: ${e.message}');
+      }
       // We only get here if nothing was applied; on success the app is
       // replaced and relaunched instead of returning.
       updateProgress = null;

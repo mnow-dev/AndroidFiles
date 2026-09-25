@@ -84,6 +84,7 @@
   "runningCurrent": "Stai usando {version}.",
   "updateButton": "Aggiorna",
   "updateLater": "Più tardi",
+  "updateFailed": "Impossibile installare l'aggiornamento automaticamente. Scaricalo dalla pagina delle release: i dettagli sono nel registro.",
   "adbDownloadFailed": "Impossibile scaricare adb automaticamente.",
   "adbDownloading": "Download di adb (platform-tools)… {percent}%",
   "adbSettingUp": "Configurazione di adb…",

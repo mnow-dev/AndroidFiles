@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: mnow-dev.AndroidFiles
+PackageVersion: 0.1.4
+InstallerType: exe
+Scope: user
+InstallModes:
+  - silent
+  - silentWithProgress
+# NOTE: verify the Velopack Setup.exe's silent switch before submitting — it may
+# be "--silent", or it may already install without UI and need InstallModes only.
+InstallerSwitches:
+  Silent: --silent
+  SilentWithProgress: --silent
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/mnow-dev/AndroidFiles/releases/download/v0.1.4/AndroidFiles-win-Setup.exe
+    InstallerSha256: 5EC22C8363965E6A71BA166DE4A0B81B20C94D316D2DFA21E9AC4BF8292D469D
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AndroidFiles — User Guide</title>
+<link rel="icon" href="favicon.ico" sizes="any">
 <meta name="description" content="How to use every AndroidFiles feature: fast streamed backups, incremental runs, snapshots, verification, the Explorer drive, restore, profiles, scheduling, and wireless.">
 <meta property="og:type" content="article">
 <meta property="og:title" content="AndroidFiles — User Guide">
@@ -373,6 +374,11 @@
   <p>Phones you've already paired are <strong>rediscovered and reconnected
   automatically</strong> when they're on the same network, so day-to-day you
   just open the app and back up — cable optional.</p>
+  <p>A single adb stream over Wi-Fi spends most of its time waiting for
+  acknowledgements, so wireless backups are <strong>split across 8 parallel
+  streams</strong> (balanced by size). In testing that took a Pixel 8 from about
+  5 MB/s to 16 MB/s. USB transfers stay single-stream; they are already
+  limited by storage, not the cable.</p>
 
   <h2 id="settings">Settings &amp; updates</h2>
   <p>The <strong>gear</strong> icon in the toolbar opens Settings:</p>

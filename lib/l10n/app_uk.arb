@@ -84,6 +84,7 @@
   "runningCurrent": "Ви використовуєте {version}.",
   "updateButton": "Оновити",
   "updateLater": "Пізніше",
+  "updateFailed": "Не вдалося автоматично встановити оновлення. Завантажте його зі сторінки релізів — подробиці в журналі.",
   "adbDownloadFailed": "Не вдалося автоматично завантажити adb.",
   "adbDownloading": "Завантаження adb (platform-tools)… {percent}%",
   "adbSettingUp": "Налаштування adb…",

@@ -14,7 +14,13 @@ using Velopack.Sources;
 // without it, even IsInstalled throws. It is safe to call here: with no hook
 // arguments (which this tool never receives) it just sets up the locator and
 // returns.
-VelopackApp.Build().Run();
+//
+// Auto-apply must be off. By default Run() notices an update already staged
+// in packages\ and immediately restarts to apply it — which here means every
+// --version/--check call exits with no output while a doomed apply runs in the
+// background, and the app reads that silence as "not installed". Applying is
+// only ever done deliberately, by --apply.
+VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
 
 const string repoUrl = "https://github.com/mnow-dev/AndroidFiles";
 

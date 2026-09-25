@@ -84,6 +84,7 @@
   "runningCurrent": "현재 {version}을(를) 사용 중입니다.",
   "updateButton": "업데이트",
   "updateLater": "나중에",
+  "updateFailed": "업데이트를 자동으로 설치하지 못했습니다. 릴리스 페이지에서 다운로드하세요. 자세한 내용은 로그에 있습니다.",
   "adbDownloadFailed": "adb를 자동으로 다운로드할 수 없습니다.",
   "adbDownloading": "adb (platform-tools) 다운로드 중… {percent}%",
   "adbSettingUp": "adb 설정 중…",

@@ -34,8 +34,10 @@ class Updater {
   /// Download and apply the update, then relaunch the app. Streams 0..100
   /// [onProgress]. On success the helper replaces this app (so [onExiting] is
   /// the app's cue to shut itself down and this future never completes
-  /// normally). Returns false if there's nothing to apply or the helper isn't
-  /// a managed install, so the caller can fall back to the release page.
+  /// normally). Returns false if there's nothing to apply. Throws
+  /// [UpdateFailed] if the helper gives up (not a managed install, network or
+  /// download error), so the caller can say so and fall back to the release
+  /// page.
   static Future<bool> applyAndRestart({
     required int appPid,
     void Function(int percent)? onProgress,
@@ -49,6 +51,7 @@ class Updater {
 
     var handledExit = false;
     final done = Completer<bool>();
+    final stderr = proc.stderr.transform(utf8.decoder).join();
 
     proc.stdout
         .transform(utf8.decoder)
@@ -68,11 +71,21 @@ class Updater {
       }
     });
 
-    unawaited(proc.exitCode.then((code) {
+    unawaited(proc.exitCode.then((code) async {
       // We only reach here without a restart when nothing was applied.
-      if (!done.isCompleted) done.complete(false);
+      if (done.isCompleted) return;
+      if (code == 0) return done.complete(false);
+      final why = (await stderr).trim();
+      done.completeError(UpdateFailed(why.isEmpty ? 'exit code $code' : why));
     }));
 
     return done.future;
   }
+}
+
+class UpdateFailed implements Exception {
+  final String message;
+  UpdateFailed(this.message);
+  @override
+  String toString() => message;
 }

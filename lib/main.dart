@@ -20,6 +20,14 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await localNotifier.setup(appName: 'AndroidFiles');
   final settings = await Settings.load();
+  // Get out of the install dir (Velopack launches us in current\). Every child
+  // inherits our working directory, and the adb server outlives us: left in
+  // current\, it pins the folder so Velopack can't swap it and every update
+  // fails with "running processes prevented it". After Settings.load, whose
+  // dev-build drive path fallback resolves against the original directory.
+  try {
+    Directory.current = Directory.systemTemp;
+  } catch (_) {}
   final controller = AppController(settings);
   final i = args.indexOf('--run-profile');
   if (i != -1 && i + 1 < args.length) {

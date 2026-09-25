@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AndroidFiles — fast Android backups for Windows</title>
+<link rel="icon" href="favicon.ico" sizes="any">
 <meta name="description" content="Back up your Android phone to Windows over ADB — several times faster than MTP, incremental, verified, with snapshots and an Explorer drive.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AndroidFiles — fast Android backups for Windows">
@@ -14,6 +15,22 @@
 <meta name="twitter:title" content="AndroidFiles — fast Android backups for Windows">
 <meta name="twitter:description" content="Back up your Android phone to Windows over ADB — several times faster than MTP.">
 <meta name="twitter:image" content="https://mnow-dev.github.io/AndroidFiles/social-preview.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "AndroidFiles",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows",
+  "description": "Fast, free, open-source Android phone backups for Windows over ADB — several times faster than MTP, incremental, verified, with dated snapshots and a mount-as-a-drive mode.",
+  "url": "https://mnow-dev.github.io/AndroidFiles/",
+  "downloadUrl": "https://github.com/mnow-dev/AndroidFiles/releases/latest",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "mnow-dev" }
+}
+</script>
 <style>
   :root {
     --bg: #f7f8f9; --fg: #1a1d20; --muted: #5c6670; --card: #ffffff;
@@ -90,7 +107,8 @@
       <p>Mount the phone as a real drive letter and browse it in Explorer
       (via WinFsp) — read-only by default, writable if you opt in.</p></div>
     <div class="card"><h3>📶 Wireless &amp; scheduled</h3>
-      <p>Pair by scanning a QR code, reconnect automatically, and schedule
+      <p>Pair by scanning a QR code, reconnect automatically, back up over
+      parallel streams about 3x faster than plain adb Wi-Fi, and schedule
       daily backups that run themselves and toast when done.</p></div>
   </div>
 

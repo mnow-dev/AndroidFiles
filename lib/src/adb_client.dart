@@ -16,6 +16,16 @@ class AdbClient {
   /// with spaces and runs them through /system/bin/sh).
   static String shellQuote(String s) => "'${s.replaceAll("'", "'\\''")}'";
 
+  /// Whether [serial] names a wireless transport — either `ip:port` from
+  /// `adb connect` or an mDNS instance like
+  /// `adb-XXXX-YYYY._adb-tls-connect._tcp`. USB serials are plain
+  /// alphanumeric, so neither marker appears.
+  ///
+  /// Wireless carries every byte over TLS with Wi-Fi round trips between
+  /// acks, which is why transfers there are split across parallel streams.
+  static bool isWireless(String serial) =>
+      serial.contains(':') || serial.contains('_adb-tls');
+
   Future<ProcessResult> _run(List<String> args, {Duration timeout = const Duration(seconds: 30)}) {
     return Process.run(adbPath, args, stdoutEncoding: utf8, stderrEncoding: utf8)
         .timeout(timeout);
@@ -28,6 +38,13 @@ class AdbClient {
   Future<ProcessResult> _shell(String serial, String command,
       {Duration timeout = const Duration(seconds: 30)}) {
     return _run(['-s', serial, 'shell', command], timeout: timeout);
+  }
+
+  /// Stop the adb server. Best-effort: nothing to stop is not a failure.
+  Future<void> killServer() async {
+    try {
+      await _run(['kill-server'], timeout: const Duration(seconds: 10));
+    } catch (_) {}
   }
 
   Future<List<AdbDevice>> devices() async {
