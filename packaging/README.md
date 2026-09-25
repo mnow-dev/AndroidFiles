@@ -28,7 +28,7 @@ Multi-file manifest for `mnow-dev.AndroidFiles`. Before opening a PR to
    `winget install --manifest packaging/winget` in a sandbox.
 2. Validate: `winget validate packaging/winget`.
 3. Fork `microsoft/winget-pkgs`, place the three files under
-   `manifests/m/mnow-dev/AndroidFiles/0.1.4/`, and open a PR. Their CI installs
+   `manifests/m/mnow-dev/AndroidFiles/0.1.5/`, and open a PR. Their CI installs
    it in a sandbox to confirm it works.
 
 ## Chocolatey (not started)
