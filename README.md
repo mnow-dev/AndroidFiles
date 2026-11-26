@@ -1,25 +1,31 @@
 # AndroidFiles
 
-**Fast, reliable Android phone backups for Windows — over ADB, not MTP.**
+**Fast, reliable Android phone backups for Windows & macOS — over ADB, not MTP.**
 
 [![Latest release](https://img.shields.io/github/v/release/mnow-dev/AndroidFiles?sort=semver)](https://github.com/mnow-dev/AndroidFiles/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/mnow-dev/AndroidFiles/total)](https://github.com/mnow-dev/AndroidFiles/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/mnow-dev/AndroidFiles/ci.yml?branch=main&label=CI)](https://github.com/mnow-dev/AndroidFiles/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/mnow-dev/AndroidFiles)](LICENSE)
 ![Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6)
+![macOS Apple Silicon & Intel](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%2F%20Intel-1D1D1F)
 
-![AndroidFiles](docs/screenshot.png)
+![AndroidFiles on Windows](docs/screenshot.png)
+![AndroidFiles on macOS](docs/screenshot-macos.png)
 
-Windows' built-in phone access (MTP) copies file-by-file, stalls on large
-folders, and gives up halfway. AndroidFiles streams whole folders off your
-phone as a single continuous transfer over ADB — saturating the USB link —
-and verifies what landed.
+Built-in phone access (MTP on Windows, or third-party MTP tools on macOS)
+copies file-by-file, stalls on large folders, and gives up halfway.
+AndroidFiles streams whole folders off your phone as a single continuous
+transfer over ADB — saturating the USB link — and verifies what landed.
 
 ## Features
 
 - **Fast backups** — folders stream as one tar pipe (`adb exec-out tar`),
   no per-file round-trips; typically several times faster than MTP for
   large folders, with live progress, speed, ETA, and pause/resume
+- **Internal storage & external microSD cards** — browse, back up, clean
+  up, or mount internal `/sdcard` and any mounted external microSD card
+  (`/storage/<UUID>`) without removing the SIM tray; external card backups
+  are kept cleanly separated in `SD-<UUID>/` subfolders
 - **Incremental** — re-runs transfer only changed files (size+mtime
   manifest diff); an unchanged 50 GB folder re-backs-up in seconds moving
   0 bytes
@@ -27,31 +33,35 @@ and verifies what landed.
   caches and system cruft (`.thumbnails`, `LOST.DIR`, `Android/data`, …)
   so they never leave the phone; the glob list is editable in Settings
 - **Mirror or Snapshot layouts** — keep one up-to-date copy, or a dated
-  folder per run where unchanged files are NTFS-hardlinked (full history at
-  almost no extra disk cost)
+  folder per run where unchanged files are hardlinked (NTFS on Windows,
+  APFS/HFS+ on macOS — full history at almost no extra disk cost)
 - **Verified** — file counts checked after every run; optional deep verify
   compares md5 of every file on both sides
-- **Explorer drive** — mount the phone as a drive letter (WinFsp) and it
-  opens in File Explorer for browsing and grabbing files; optional writable
-  mode (off by default, guarded by a warning)
-- **Restore** — drag files from Explorer onto the app to push them back to
-  the phone
+- **Clean Up Space** — analyze phone storage, inspect largest
+  folders & files, find exact MD5 duplicates, and act on smart proposals
+  (e.g. DCIM videos only, keep last 3/6/12 months, already backed-up
+  downloads) with optional **Back up first + verify MD5** before deleting
+- **Explorer drive (Windows)** — mount the phone as a drive letter (WinFsp)
+  and it opens in File Explorer for browsing and grabbing files; optional
+  writable mode (off by default, guarded by a warning)
+- **Restore** — drag files from Explorer or Finder onto the app to push
+  them back to the phone
 - **Profiles & scheduling** — save folder selections, re-run in one click,
-  or schedule daily backups via Windows Task Scheduler with toast
-  notifications
+  or schedule daily backups via Windows Task Scheduler or macOS `launchd`
+  with desktop notifications
 - **Space at a glance** — the destination drive's free space and the total
   size of your current selection show under the destination as you tick folders
 - **11 languages** — English, Spanish, German, French, Italian, Portuguese,
-  Polish, Ukrainian, Japanese, Korean, and Chinese; follows Windows by default
-  or pick one in Settings
+  Polish, Ukrainian, Japanese, Korean, and Chinese; follows your OS by
+  default or pick one in Settings
 - **Wireless** — pair by scanning a QR code (like Android Studio);
-  already-paired phones on your network reconnect automatically. Wireless
-  transfers are split across 8 parallel streams, about 3x faster than a
-  single adb stream over Wi-Fi
+  already-paired phones on your network reconnect automatically (with
+  native Bonjour discovery on macOS). Wireless transfers are split across
+  8 parallel streams, about 3x faster than a single adb stream over Wi-Fi
 - **Self-contained** — if adb isn't installed, the app downloads Google's
   platform-tools automatically
 - **Correct with non-ASCII filenames** — tar extraction is done natively
-  (Windows' bundled bsdtar mangles UTF-8 names)
+  (avoiding platform tar UTF-8 quirks)
 
 ## Install
 
@@ -85,6 +95,32 @@ accept the prompt. (Or pair wirelessly via the Wi-Fi button — no cable.)
   release. Turn the check off under **Settings → Check GitHub for new versions
   on launch**.
 
+### macOS
+
+AndroidFiles runs natively on macOS (Apple silicon and Intel) with a
+dedicated macOS 3-pane Finder & Inspector UI, native menu bar shortcuts
+(`⌘1`/`⌘2` workspaces, `⌘B` backup, `⌘,` settings), and the **Clean Up
+Space** workspace. Download `AndroidFiles-v*-macos.dmg` from
+[Releases](../../releases/latest) (once published) and drag `AndroidFiles.app`
+to Applications, or build from source (see [Building from source](#building-from-source)).
+Backups, incremental runs, external microSD cards, snapshots, verify, restore,
+wireless pairing (via native Bonjour), profiles, and scheduling all work as on
+Windows; the WinFsp Explorer drive and Velopack in-app updates are Windows-only.
+On a Mac:
+
+- adb is taken from Homebrew or Android Studio if installed, otherwise
+  downloaded from Google as on Windows. No USB driver is needed.
+- Back up to any folder, including an external drive under `/Volumes`. If
+  that drive isn't plugged in, the app says so and won't start (rather than
+  writing to the Mac's own disk). NTFS drives are read-only on macOS; use
+  APFS, Mac OS Extended or exFAT.
+- Snapshot mode hardlinks unchanged files on APFS/Mac OS Extended; on exFAT
+  it copies them instead (works, but costs the full space each run).
+- The Mac is kept from idle-sleeping while a backup runs (the display may
+  still turn off). Closing a laptop's lid still puts it to sleep.
+- Scheduled backups are registered with launchd as LaunchAgents in
+  `~/Library/LaunchAgents`.
+
 ## Quick start
 
 1. Tick the folders to back up in the tree on the left.
@@ -96,7 +132,7 @@ For a walkthrough of every feature, see the
 
 ## Status
 
-AndroidFiles is early software (v0.1.0) and in active use, but it reads
+AndroidFiles is early software (v0.2.0) and in active use, but it reads
 from — and, in writable-drive and restore modes, writes to — your phone.
 **Keep at least one independent backup of anything you can't afford to lose**,
 and leave the Explorer drive read-only unless you specifically need to change
@@ -129,6 +165,18 @@ flutter pub get
 flutter build windows --release
 dotnet publish drive -c Release -o drive\publish   # optional: Explorer drive host
 ```
+
+On macOS you need Flutter, Xcode and [CocoaPods](https://cocoapods.org):
+
+```sh
+flutter pub get
+flutter build macos --release   # → build/macos/Build/Products/Release/AndroidFiles.app
+```
+
+The Mac app isn't sandboxed (it runs adb and writes wherever you point it),
+and a local build isn't notarized. That only matters if you hand the `.app`
+to someone else: their Mac will block it until they allow it under
+*System Settings → Privacy & Security → Open Anyway*.
 
 Run the tests with `flutter test`. There is also a live end-to-end suite
 (`flutter test test/live_backup_manual.dart`) that exercises real transfers

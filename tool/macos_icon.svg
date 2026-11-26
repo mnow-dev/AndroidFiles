@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- AndroidFiles macOS App Icon (Option B: BG-2 Northern Lights Mesh + Leaning Frosted Bot + Single-Layer White Folder) -->
+  <defs>
+    <filter id="squircle-shadow" x="-12%" y="-10%" width="124%" height="128%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#05292A" flood-opacity="0.32"/>
+    </filter>
+    <filter id="folder-shadow" x="-18%" y="-16%" width="136%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#05292A" flood-opacity="0.32"/>
+    </filter>
+    <filter id="bot-shadow" x="-20%" y="-16%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#042624" flood-opacity="0.30"/>
+    </filter>
+
+    <linearGradient id="bg-base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#159E6E"/>
+      <stop offset="48%" stop-color="#0D6A68"/>
+      <stop offset="100%" stop-color="#0C3B5C"/>
+    </linearGradient>
+    <radialGradient id="bg-rad1" cx="18%" cy="16%" r="65%">
+      <stop offset="0%" stop-color="#6BFFA9" stop-opacity="0.56"/>
+      <stop offset="100%" stop-color="#6BFFA9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bg-rad2" cx="86%" cy="28%" r="52%">
+      <stop offset="0%" stop-color="#38D6E8" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#38D6E8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bg-rad3" cx="50%" cy="90%" r="55%">
+      <stop offset="0%" stop-color="#1CE084" stop-opacity="0.26"/>
+      <stop offset="100%" stop-color="#1CE084" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="bot-glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#C8FFF0" stop-opacity="0.32"/>
+    </linearGradient>
+    <linearGradient id="folder-front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#E4F5F2" stop-opacity="0.94"/>
+    </linearGradient>
+    <linearGradient id="arrow-deboss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0D7165" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#158C7D" stop-opacity="0.20"/>
+    </linearGradient>
+
+    <clipPath id="upper-clip">
+      <rect x="0" y="0" width="1024" height="540"/>
+    </clipPath>
+  </defs>
+
+  <!-- Apple 824 / 1024 Continuous Squircle -->
+  <path d="M 286 100 H 738 C 858 100 924 166 924 286 V 738 C 924 858 858 924 738 924 H 286 C 166 924 100 858 100 738 V 286 C 100 166 166 100 286 100 Z" fill="url(#bg-base)" filter="url(#squircle-shadow)"/>
+  <path d="M 286 100 H 738 C 858 100 924 166 924 286 V 738 C 924 858 858 924 738 924 H 286 C 166 924 100 858 100 738 V 286 C 100 166 166 100 286 100 Z" fill="url(#bg-rad1)"/>
+  <path d="M 286 100 H 738 C 858 100 924 166 924 286 V 738 C 924 858 858 924 738 924 H 286 C 166 924 100 858 100 738 V 286 C 100 166 166 100 286 100 Z" fill="url(#bg-rad2)"/>
+  <path d="M 286 100 H 738 C 858 100 924 166 924 286 V 738 C 924 858 858 924 738 924 H 286 C 166 924 100 858 100 738 V 286 C 100 166 166 100 286 100 Z" fill="url(#bg-rad3)"/>
+  <path d="M 286 100 H 738 C 858 100 924 166 924 286 V 738 C 924 858 858 924 738 924 H 286 C 166 924 100 858 100 738 V 286 C 100 166 166 100 286 100 Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.48" stroke-width="4.5"/>
+
+  <!-- Frosted White-Glass Android Bot (+11 deg right peek) -->
+  <g clip-path="url(#upper-clip)">
+    <g transform="translate(26, 8) rotate(11 512 500)" filter="url(#bot-shadow)">
+      <line x1="422" y1="306" x2="372" y2="224" stroke="#FFFFFF" stroke-opacity="0.82" stroke-width="26" stroke-linecap="round"/>
+      <line x1="602" y1="306" x2="652" y2="224" stroke="#FFFFFF" stroke-opacity="0.82" stroke-width="26" stroke-linecap="round"/>
+      <path d="M 326 496 A 186 186 0 0 1 698 496 L 698 560 L 326 560 Z" fill="url(#bot-glass)" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="5"/>
+      <circle cx="436" cy="404" r="22" fill="#FFFFFF" opacity="0.96"/>
+      <circle cx="588" cy="404" r="22" fill="#FFFFFF" opacity="0.96"/>
+    </g>
+  </g>
+
+  <!-- Sculpted White macOS Folder -->
+  <g filter="url(#folder-shadow)">
+    <path d="M 232 484 C 232 452 258 426 290 426 H 434 C 454 426 472 436 484 452 L 508 484 H 734 C 766 484 792 510 792 542 V 742 C 792 778 762 808 726 808 H 298 C 262 808 232 778 232 742 Z" fill="url(#folder-front)" stroke="#FFFFFF" stroke-width="4"/>
+    <rect x="234" y="516" width="556" height="3.5" fill="#0D7165" opacity="0.10"/>
+  </g>
+
+  <!-- Soft Debossed Download Arrow -->
+  <g transform="translate(0, 4)">
+    <path d="M 512 560 C 527 560 539 572 539 587 V 668 L 577 630 C 588 619 605 619 616 630 C 627 641 627 658 616 669 L 531 753 C 520 764 504 764 493 753 L 408 669 C 397 658 397 641 408 630 C 419 619 436 619 447 630 L 485 668 V 587 C 485 572 497 560 512 560 Z" fill="#FFFFFF" opacity="0.88"/>
+  </g>
+  <path d="M 512 560 C 527 560 539 572 539 587 V 668 L 577 630 C 588 619 605 619 616 630 C 627 641 627 658 616 669 L 531 753 C 520 764 504 764 493 753 L 408 669 C 397 658 397 641 408 630 C 419 619 436 619 447 630 L 485 668 V 587 C 485 572 497 560 512 560 Z" fill="url(#arrow-deboss)"/>
+</svg>

@@ -142,5 +142,12 @@
   "stepConnectPhone": "Verbinde dein Telefon (USB oder das WLAN-Symbol oben)",
   "stepTickFolders": "Wähle im Baum links die zu sichernden Ordner",
   "stepChooseDestination": "Wähle den Speicherort und drücke „Sichern“",
-  "onboardingTips": "Tipps: Dateien aus dem Explorer auf den Baum ziehen, um sie AUF das Telefon zu kopieren · Auswahl als Profil speichern für Wiederholungen mit einem Klick und tägliche Planung · das Laufwerkssymbol oben zeigt das Telefon direkt im Explorer"
+  "onboardingTips": "Tipps: Dateien aus dem Explorer auf den Baum ziehen, um sie AUF das Telefon zu kopieren · Auswahl als Profil speichern für Wiederholungen mit einem Klick und tägliche Planung · das Laufwerkssymbol oben zeigt das Telefon direkt im Explorer",
+
+  "destinationPlaceholderMac": "Ordner auf diesem Mac oder einem externen Laufwerk, z. B. /Volumes/MeinLaufwerk/PhoneBackup",
+  "onboardingTipsMac": "Tipps: Dateien aus dem Finder auf den Baum ziehen, um sie AUF das Telefon zu kopieren · Auswahl als Profil speichern für Wiederholungen mit einem Klick und tägliche Planung",
+  "themeSystemMac": "macOS folgen",
+  "locateAdb": "adb suchen",
+  "scheduleNoteMac": "Läuft über launchd, während du angemeldet bist; ein im Ruhezustand verpasster Lauf wird beim Aufwachen nachgeholt. Das Telefon muss verbunden sein (USB oder WLAN-Debugging).",
+  "driveNotConnected": "Laufwerk „{name}“ ist nicht verbunden"
 }

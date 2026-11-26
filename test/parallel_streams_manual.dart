@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:android_files/src/adb_client.dart';
 import 'package:android_files/src/backup_engine.dart';
 import 'package:android_files/src/models.dart';
+import 'package:android_files/src/os.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final adbPath = Platform.environment['ADB'] ?? 'adb';
@@ -82,7 +83,7 @@ void main() async {
   /// Full transfer through the file-list path: an empty base makes every file
   /// "changed", which is what the engine shards.
   Future<(double seconds, BackupJob job)> run(int streams) async {
-    final dest = Directory('${scratch.path}\\s$streams')..createSync();
+    final dest = Directory(localJoin(scratch.path, 's$streams'))..createSync();
     final engine = BackupEngine(adb,
         log: (m) => print('  [log] $m'), parallelStreams: streams);
     final job = BackupJob(
@@ -107,12 +108,12 @@ void main() async {
     final expectedBytes = (bigFiles * bigMb + smallFiles) * 1024 * 1024;
 
     final (oneSec, oneJob) = await run(1);
-    final oneDir = '${scratch.path}\\s1';
+    final oneDir = localJoin(scratch.path, 's1');
     expect(localCount(oneDir), expectedFiles);
     expect(localBytes(oneDir), expectedBytes);
 
     final (manySec, manyJob) = await run(8);
-    final manyDir = '${scratch.path}\\s8';
+    final manyDir = localJoin(scratch.path, 's8');
     expect(localCount(manyDir), expectedFiles,
         reason: 'sharded transfer lost files');
     expect(localBytes(manyDir), expectedBytes,
@@ -137,7 +138,7 @@ void main() async {
   }, timeout: const Timeout(Duration(minutes: 15)));
 
   test('a plain full backup is sharded too, not just incremental', () async {
-    final dest = Directory('${scratch.path}\\full')..createSync();
+    final dest = Directory(localJoin(scratch.path, 'full'))..createSync();
     final logs = <String>[];
     final engine = BackupEngine(adb, log: logs.add, parallelStreams: 8);
     final job = BackupJob(source: entry, serial: serial, destDir: dest.path);
@@ -155,7 +156,7 @@ void main() async {
   }, timeout: const Timeout(Duration(minutes: 10)));
 
   test('cancel stops every shard, not just the first', () async {
-    final dest = Directory('${scratch.path}\\cancel')..createSync();
+    final dest = Directory(localJoin(scratch.path, 'cancel'))..createSync();
     final engine = BackupEngine(adb,
         log: (m) => print('  [log] $m'), parallelStreams: 8);
     final job = BackupJob(
@@ -185,7 +186,7 @@ void main() async {
   }, timeout: const Timeout(Duration(minutes: 10)));
 
   test('pause halts every shard and resume restarts them all', () async {
-    final dest = Directory('${scratch.path}\\pause')..createSync();
+    final dest = Directory(localJoin(scratch.path, 'pause'))..createSync();
     final engine = BackupEngine(adb,
         log: (m) => print('  [log] $m'), parallelStreams: 8);
     final job = BackupJob(

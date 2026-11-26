@@ -121,3 +121,47 @@ jobs:
             "AndroidFiles-$v-windows-x64.zip" `
             "AndroidFiles-$v-windows-x64.zip.sha256" `
             --clobber
+
+  release-macos:
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter gen-l10n
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build macos --release
+
+      - name: Package macOS DMG
+        run: |
+          v="${{ github.ref_name }}"
+          app="build/macos/Build/Products/Release/AndroidFiles.app"
+          dmg="AndroidFiles-$v-macos.dmg"
+          stage="dmg-stage"
+          rm -rf "$stage" "$dmg"
+          mkdir -p "$stage"
+          cp -R "$app" "$stage/"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create \
+            -volname "AndroidFiles" \
+            -srcfolder "$stage" \
+            -ov -format UDZO \
+            "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - name: Attach macOS DMG to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ github.ref_name }}"
+          gh release upload "$v" \
+            "AndroidFiles-$v-macos.dmg" \
+            "AndroidFiles-$v-macos.dmg.sha256" \
+            --clobber

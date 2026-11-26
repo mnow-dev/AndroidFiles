@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AndroidFiles — fast Android backups for Windows</title>
+<title>AndroidFiles — fast Android backups for Windows &amp; macOS</title>
 <link rel="icon" href="favicon.ico" sizes="any">
-<meta name="description" content="Back up your Android phone to Windows over ADB — several times faster than MTP, incremental, verified, with snapshots and an Explorer drive.">
+<meta name="description" content="Back up your Android phone to Windows or macOS over ADB — several times faster than MTP, incremental, verified, with snapshots, space cleanup, and an Explorer drive.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AndroidFiles — fast Android backups for Windows">
-<meta property="og:description" content="Back up your Android phone to Windows over ADB — several times faster than MTP, incremental, verified, with an Explorer drive.">
+<meta property="og:title" content="AndroidFiles — fast Android backups for Windows &amp; macOS">
+<meta property="og:description" content="Back up your Android phone to Windows or macOS over ADB — several times faster than MTP, incremental, verified, with snapshots and wireless QR pairing.">
 <meta property="og:url" content="https://mnow-dev.github.io/AndroidFiles/">
 <meta property="og:image" content="https://mnow-dev.github.io/AndroidFiles/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="AndroidFiles — fast Android backups for Windows">
-<meta name="twitter:description" content="Back up your Android phone to Windows over ADB — several times faster than MTP.">
+<meta name="twitter:title" content="AndroidFiles — fast Android backups for Windows &amp; macOS">
+<meta name="twitter:description" content="Back up your Android phone to Windows or macOS over ADB — several times faster than MTP.">
 <meta name="twitter:image" content="https://mnow-dev.github.io/AndroidFiles/social-preview.png">
 <script type="application/ld+json">
 {
@@ -21,8 +21,8 @@
   "@type": "SoftwareApplication",
   "name": "AndroidFiles",
   "applicationCategory": "UtilitiesApplication",
-  "operatingSystem": "Windows",
-  "description": "Fast, free, open-source Android phone backups for Windows over ADB — several times faster than MTP, incremental, verified, with dated snapshots and a mount-as-a-drive mode.",
+  "operatingSystem": "Windows, macOS",
+  "description": "Fast, free, open-source Android phone backups for Windows and macOS over ADB — several times faster than MTP, incremental, verified, with dated snapshots, space cleanup, and wireless QR pairing.",
   "url": "https://mnow-dev.github.io/AndroidFiles/",
   "downloadUrl": "https://github.com/mnow-dev/AndroidFiles/releases/latest",
   "license": "https://opensource.org/licenses/MIT",
@@ -62,7 +62,18 @@
   .btn:hover { filter: brightness(1.05); }
   .fineprint { color: var(--muted); font-size: 13px; margin-top: 14px; }
   .shot { display: block; width: 100%; border-radius: 12px; border: 1px solid var(--border);
-          box-shadow: 0 24px 60px rgba(0,0,0,.18); margin: 36px 0 56px; }
+          box-shadow: 0 24px 60px rgba(0,0,0,.18); margin: 14px 0 56px; }
+  .shot-wrap { margin-top: 28px; }
+  .shot-tabs { display: flex; justify-content: center; gap: 6px; }
+  .shot-tab {
+    padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted);
+    cursor: pointer; font-family: inherit;
+  }
+  .shot-tab[aria-selected="true"] {
+    background: var(--accent); color: var(--accent-fg); border-color: transparent;
+  }
+  .shot[hidden] { display: none; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
           gap: 16px; margin-bottom: 64px; }
   .card { background: var(--card); border: 1px solid var(--border);
@@ -78,17 +89,24 @@
 <div class="wrap">
   <header>
     <h1>Android<span class="accent">Files</span></h1>
-    <p class="tagline">Back up your Android phone to Windows over ADB —
+    <p class="tagline">Back up your Android phone to Windows or macOS over ADB —
     several times faster than MTP, incremental, and verified.</p>
     <div class="buttons">
-      <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download for Windows</a>
+      <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download (Windows &amp; macOS)</a>
       <a class="btn" href="guide.html">User guide</a>
-      <a class="btn" href="https://github.com/mnow-dev/AndroidFiles">View on GitHub</a>
+      <a class="btn" href="https://github.com/mnow-dev/AndroidFiles">GitHub</a>
     </div>
-    <p class="fineprint">Free &amp; open source (MIT) · Windows 10/11 x64 · installer that keeps itself up to date, or a portable ZIP</p>
+    <p class="fineprint">Free &amp; open source (MIT) · Windows 10/11 x64 (Setup.exe / portable ZIP) &amp; macOS (DMG / Apple silicon &amp; Intel)</p>
   </header>
 
-  <img class="shot" src="screenshot.png" alt="AndroidFiles main window: folder tree of a connected Pixel, backup options, and queue">
+  <div class="shot-wrap">
+    <div class="shot-tabs" role="tablist" aria-label="Platform screenshot">
+      <button class="shot-tab" role="tab" type="button" data-os="windows" aria-selected="true">Windows</button>
+      <button class="shot-tab" role="tab" type="button" data-os="macos" aria-selected="false">macOS</button>
+    </div>
+    <img class="shot" id="shot-windows" src="screenshot.png" alt="AndroidFiles on Windows: folder tree of a connected Pixel, backup options, and queue">
+    <img class="shot" id="shot-macos" src="screenshot-macos.png" alt="AndroidFiles on macOS: native 3-pane Finder and Inspector UI with connected Pixel, folder tree, and backup controls" hidden>
+  </div>
 
   <div class="grid">
     <div class="card"><h3>⚡ Streamed, not stuttered</h3>
@@ -98,29 +116,56 @@
       <p>Re-runs move only what changed. An untouched 50&nbsp;GB photo library
       re-verifies in seconds and transfers 0 bytes.</p></div>
     <div class="card"><h3>🕘 Snapshots</h3>
-      <p>Keep a dated folder per run — unchanged files are hardlinked, so
-      months of history cost almost no extra disk.</p></div>
+      <p>Keep a dated folder per run — unchanged files are hardlinked (NTFS on
+      Windows, APFS/HFS+ on macOS), so months of history cost almost no extra disk.</p></div>
     <div class="card"><h3>✅ Verified</h3>
       <p>File counts are checked after every run, and a deep-verify mode
       compares md5 of every file on both sides.</p></div>
-    <div class="card"><h3>🗂️ Explorer drive</h3>
+    <div class="card"><h3>💾 Internal &amp; microSD</h3>
+      <p>Switch between internal storage (<code>/sdcard</code>) and mounted
+      external microSD cards (<code>/storage/&lt;UUID&gt;</code>) without pulling
+      the SIM tray — works for backups, cleanup, and Explorer mount.</p></div>
+    <div class="card"><h3>✨ Clean Up Space</h3>
+      <p>Spot space-hog folders and large files, find exact MD5 duplicates, and
+      safely offload older DCIM videos or backed-up files — with automatic
+      backup &amp; MD5 verification before deleting.</p></div>
+    <div class="card"><h3>🗂️ Explorer drive (Windows)</h3>
       <p>Mount the phone as a real drive letter and browse it in Explorer
       (via WinFsp) — read-only by default, writable if you opt in.</p></div>
     <div class="card"><h3>📶 Wireless &amp; scheduled</h3>
       <p>Pair by scanning a QR code, reconnect automatically, back up over
       parallel streams about 3x faster than plain adb Wi-Fi, and schedule
-      daily backups that run themselves and toast when done.</p></div>
+      daily backups (Task Scheduler on Windows, launchd on macOS).</p></div>
+    <div class="card"><h3>🖥️ Native on Windows &amp; macOS</h3>
+      <p>Fluent UI on Windows 10/11 and a dedicated 3-pane Finder &amp; Inspector
+      interface on macOS with menu bar shortcuts, external drive protection,
+      and keep-awake during transfers.</p></div>
   </div>
 
   <footer>
     <a href="guide.html">User guide</a> ·
     MIT licensed · <a href="https://github.com/mnow-dev/AndroidFiles">Source on GitHub</a> ·
-    Not yet code-signed, so Windows SmartScreen may warn on first run
-    (<em>More info → Run anyway</em>). UI built with fluent_ui; Explorer drive
-    via <a href="https://winfsp.dev">WinFsp</a>; updates via
-    <a href="https://velopack.io">Velopack</a>.
+    Releases are not yet code-signed, so SmartScreen / Gatekeeper may warn on first run.
+    Windows UI with fluent_ui, Explorer drive via <a href="https://winfsp.dev">WinFsp</a>,
+    updates via <a href="https://velopack.io">Velopack</a>; native macOS UI on Flutter.
   </footer>
 </div>
+<script>
+(() => {
+  const tabs = document.querySelectorAll('.shot-tab');
+  const imgs = {
+    windows: document.getElementById('shot-windows'),
+    macos: document.getElementById('shot-macos'),
+  };
+  function select(os) {
+    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.os === os));
+    imgs.windows.hidden = os !== 'windows';
+    imgs.macos.hidden = os !== 'macos';
+  }
+  for (const t of tabs) t.addEventListener('click', () => select(t.dataset.os));
+  if (/Mac|Macintosh/i.test(navigator.platform || navigator.userAgent)) select('macos');
+})();
+</script>
 <!-- Cloudflare Web Analytics (cookieless, no PII) -->
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "bf8d5750dac649b6a8cc711758d8e76d"}'></script>
 <!-- End Cloudflare Web Analytics -->

@@ -7,10 +7,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import 'adb_client.dart';
+import 'hard_links.dart';
 import 'manifest.dart';
 import 'models.dart';
+import 'os.dart';
 import 'tar_extractor.dart';
-import 'win_links.dart';
 
 class BackupJob extends ChangeNotifier {
   final RemoteEntry source;
@@ -200,6 +201,17 @@ class BackupEngine extends ChangeNotifier {
   void clearFinished() {
     jobs.removeWhere((j) => j.status.isTerminal);
     notifyListeners();
+  }
+
+  /// Cancel every queued or running job and kill all active adb child
+  /// processes immediately (called on app exit so no orphaned tar streams
+  /// keep hammering the phone in the background).
+  void cancelAll() {
+    for (final j in jobs) {
+      if (!j.status.isTerminal) {
+        j.cancel();
+      }
+    }
   }
 
   Future<void> _pump() async {
@@ -420,9 +432,9 @@ class BackupEngine extends ChangeNotifier {
         log('Linking ${unchanged.length} unchanged file(s) from previous snapshot…');
         for (final rel in unchanged) {
           if (job._cancelRequested) return job._set(JobStatus.cancelled);
-          final win = rel.replaceAll('/', '\\');
           try {
-            await hardLinkOrCopy('${job.baseDir}\\$win', '${job.destDir}\\$win');
+            await hardLinkOrCopy(
+                localJoin(job.baseDir!, rel), localJoin(job.destDir, rel));
             job.linkedFiles++;
           } catch (e) {
             job.warnings.add('Could not link $rel: $e');
@@ -432,7 +444,7 @@ class BackupEngine extends ChangeNotifier {
       }
 
       job._set(JobStatus.verifying);
-      final localRoot = '${job.destDir}${Platform.pathSeparator}${job.source.name}';
+      final localRoot = localJoin(job.destDir, job.source.name);
       job.localFileCount = await _countLocalFiles(localRoot);
       if (job.deviceFileCount >= 0 && job.localFileCount < job.deviceFileCount) {
         job.warnings.add(
@@ -680,7 +692,7 @@ class BackupEngine extends ChangeNotifier {
   Future<void> _pullFiles(BackupJob job, String parent, List<String> rels) async {
     for (final rel in rels) {
       if (job._cancelRequested) return;
-      final destFile = '${job.destDir}\\${rel.replaceAll('/', '\\')}';
+      final destFile = localJoin(job.destDir, rel);
       await Directory(File(destFile).parent.path).create(recursive: true);
       final r = await Process.run(
           adb.adbPath, ['-s', job.serial, 'pull', '-a', '$parent/$rel', destFile]);
@@ -744,7 +756,7 @@ class BackupEngine extends ChangeNotifier {
       var missing = 0;
       var lastTick = DateTime.now();
       for (final e in device.entries) {
-        final f = File('${job.destDir}\\${e.key.replaceAll('/', '\\')}');
+        final f = File(localJoin(job.destDir, e.key));
         job.currentFile = e.key;
         job.verifiedFiles++;
         job._tick();

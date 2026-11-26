@@ -142,5 +142,12 @@
   "stepConnectPhone": "Connectez votre téléphone (USB ou l'icône Wi-Fi ci-dessus)",
   "stepTickFolders": "Cochez les dossiers à enregistrer dans l'arborescence à gauche",
   "stepChooseDestination": "Choisissez où les stocker, puis appuyez sur Sauvegarder",
-  "onboardingTips": "Astuces : glissez des fichiers de l'Explorateur sur l'arborescence pour les copier VERS le téléphone · enregistrez votre sélection comme profil pour des relances en un clic et une planification quotidienne · l'icône de disque en haut affiche le téléphone directement dans l'Explorateur"
+  "onboardingTips": "Astuces : glissez des fichiers de l'Explorateur sur l'arborescence pour les copier VERS le téléphone · enregistrez votre sélection comme profil pour des relances en un clic et une planification quotidienne · l'icône de disque en haut affiche le téléphone directement dans l'Explorateur",
+
+  "destinationPlaceholderMac": "Dossier sur ce Mac ou un disque externe, p. ex. /Volumes/MonDisque/PhoneBackup",
+  "onboardingTipsMac": "Astuces : glissez des fichiers du Finder sur l'arborescence pour les copier VERS le téléphone · enregistrez votre sélection comme profil pour des relances en un clic et une planification quotidienne",
+  "themeSystemMac": "Suivre macOS",
+  "locateAdb": "Localiser adb",
+  "scheduleNoteMac": "S'exécute via launchd pendant que vous êtes connecté ; une exécution manquée pendant la veille du Mac a lieu à son réveil. Le téléphone doit être connecté (USB ou débogage Wi-Fi).",
+  "driveNotConnected": "Le disque « {name} » n'est pas connecté"
 }

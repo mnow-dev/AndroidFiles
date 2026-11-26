@@ -142,5 +142,12 @@
   "stepConnectPhone": "Conecte seu telefone (USB ou o ícone de Wi-Fi acima)",
   "stepTickFolders": "Marque as pastas a salvar na árvore à esquerda",
   "stepChooseDestination": "Escolha onde guardar e pressione Fazer backup",
-  "onboardingTips": "Dicas: arraste arquivos do Explorador para a árvore para copiá-los PARA o telefone · salve sua seleção como perfil para repetições com um clique e agendamento diário · o ícone de disco no topo mostra o telefone diretamente no Explorador"
+  "onboardingTips": "Dicas: arraste arquivos do Explorador para a árvore para copiá-los PARA o telefone · salve sua seleção como perfil para repetições com um clique e agendamento diário · o ícone de disco no topo mostra o telefone diretamente no Explorador",
+
+  "destinationPlaceholderMac": "Pasta neste Mac ou num disco externo, ex.: /Volumes/MeuDisco/PhoneBackup",
+  "onboardingTipsMac": "Dicas: arraste arquivos do Finder para a árvore para copiá-los PARA o telefone · salve sua seleção como perfil para repetições com um clique e agendamento diário",
+  "themeSystemMac": "Seguir o macOS",
+  "locateAdb": "Localizar adb",
+  "scheduleNoteMac": "Executa pelo launchd enquanto você está conectado; uma execução perdida com o Mac em repouso acontece quando ele desperta. O telefone deve estar conectado (USB ou depuração Wi-Fi).",
+  "driveNotConnected": "O disco \"{name}\" não está conectado"
 }

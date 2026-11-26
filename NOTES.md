@@ -222,6 +222,32 @@ incremental, snapshot+hardlink, deep verify, and the pull fallback.
 - Self-contained updater is ~68 MB (Setup.exe ~49 MB); Velopack deltas keep
       subsequent updates small. Didn't trim (Velopack reflection).
 
+## macOS port — 2026-11-26
+- [x] `macos/` runner (Flutter), no App Sandbox (adb, arbitrary
+      destinations and LaunchAgents can't work inside it); 880×720 window
+      like Windows; icon from `dart run tool/gen_icon.dart --macos`.
+- [x] Path handling via `lib/src/os.dart` (`localJoin` converts tar-style
+      relative paths to native ones). On POSIX, `\` and `:` in phone
+      filenames are kept literally; Windows still treats them as unsafe.
+- [x] Hardlinks via libc `link(2)` (`hard_links.dart`), free space via
+      `statfs(2)` (layout checked against `<sys/mount.h>`, and against `df` in
+      `test/platform_test.dart`; x86_64 needs the `statfs$INODE64` symbol).
+- [x] adb: Homebrew/Android Studio locations are probed explicitly, since a
+      Finder-launched app doesn't get the shell's PATH; the platform-tools
+      download is the `-darwin` zip, with the executable bit restored.
+- [x] Scheduling: per-profile LaunchAgent (`StartCalendarInterval`,
+      bootstrapped into `gui/<uid>`); missed runs fire on wake.
+- [x] Keep-awake: `androidfiles/power` method channel → NSProcessInfo
+      `.userInitiated` activity while the engine runs (blocks idle sleep and
+      App Nap, which would otherwise throttle a backgrounded transfer).
+- [x] Unplugged `/Volumes/<name>` destinations are refused (UI + headless),
+      since the path would otherwise fall through to the startup disk.
+- Windows-only, hidden on macOS: Explorer drive (WinFsp), Velopack updater,
+      update check (no Mac release assets to point at yet).
+- Known: `local_notifier` uses the deprecated NSUserNotification API, so the
+      "queue finished" notification may not show on recent macOS.
+- Not done: packaged/notarized Mac release in release.yml.
+
 ## Phase 2 (separate component)
 - [x] WinFsp service prototype — `drive/` (C#/.NET 9, references the WinFsp
       installer's official `winfsp-msil.dll`). Read-only, mounts /sdcard at

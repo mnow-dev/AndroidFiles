@@ -7,15 +7,17 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_controller.dart';
+import '../drive_manager.dart';
 import '../scheduler.dart';
 import '../settings.dart';
 import '../update_checker.dart';
 
 Future<String?> _pickExe(String title) async {
+  // Only Windows marks executables by extension.
   final r = await FilePicker.pickFiles(
     dialogTitle: title,
-    type: FileType.custom,
-    allowedExtensions: ['exe'],
+    type: Platform.isWindows ? FileType.custom : FileType.any,
+    allowedExtensions: Platform.isWindows ? ['exe'] : null,
   );
   return r?.files.firstOrNull?.path;
 }
@@ -134,7 +136,11 @@ Future<void> showSettingsDialog(BuildContext context, AppController app) async {
                                   size: 16,
                                 ),
                                 onPressed: () async {
-                                  final p = await _pickExe(l.locateAdbExe);
+                                  final p = await _pickExe(
+                                    Platform.isWindows
+                                        ? l.locateAdbExe
+                                        : l.locateAdb,
+                                  );
                                   if (p != null) {
                                     setState(() => adbPath.text = p);
                                   }
@@ -174,82 +180,84 @@ Future<void> showSettingsDialog(BuildContext context, AppController app) async {
                           child: Text(l.adbRestartNote, style: caption),
                         ),
                       ]),
-                      section(l.settingsExplorerDrive, [
-                        InfoLabel(
-                          label: l.driveHost,
-                          child: Row(
-                            children: [
-                              Expanded(child: TextBox(controller: driveExe)),
-                              const SizedBox(width: 4),
-                              IconButton(
-                                icon: const Icon(
-                                  FluentIcons.open_folder_horizontal,
-                                  size: 16,
+                      if (DriveManager.supported)
+                        section(l.settingsExplorerDrive, [
+                          InfoLabel(
+                            label: l.driveHost,
+                            child: Row(
+                              children: [
+                                Expanded(child: TextBox(controller: driveExe)),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(
+                                    FluentIcons.open_folder_horizontal,
+                                    size: 16,
+                                  ),
+                                  onPressed: () async {
+                                    final p = await _pickExe(l.locateDriveExe);
+                                    if (p != null) {
+                                      setState(() => driveExe.text = p);
+                                    }
+                                  },
                                 ),
-                                onPressed: () async {
-                                  final p = await _pickExe(l.locateDriveExe);
-                                  if (p != null) {
-                                    setState(() => driveExe.text = p);
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        InfoLabel(
-                          label: l.driveLetter,
-                          child: ComboBox<String>(
-                            value: mountPoint,
-                            isExpanded: true,
-                            items: [
-                              for (final d in mountOptions)
-                                ComboBoxItem(value: d, child: Text(d)),
-                            ],
-                            onChanged: (v) => v != null
-                                ? setState(() => mountPoint = v)
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Checkbox(
-                          checked: writable,
-                          content: Expanded(
-                            child: Text(
-                              l.writableDriveWarning,
-                              // Not Colors.red: a fixed mid-red goes muddy against
-                              // the dark theme's surface. This token is per-brightness.
-                              style: TextStyle(
-                                color: theme.resources.systemFillColorCritical,
-                              ),
+                              ],
                             ),
                           ),
-                          onChanged: (v) async {
-                            if (v != true) {
-                              setState(() => writable = false);
-                              return;
-                            }
-                            final ok = await showDialog<bool>(
-                              context: ctx,
-                              builder: (c2) => ContentDialog(
-                                title: Text(l.enableWritableTitle),
-                                content: Text(l.enableWritableBody),
-                                actions: [
-                                  Button(
-                                    onPressed: () => Navigator.pop(c2, false),
-                                    child: Text(l.cancel),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pop(c2, true),
-                                    child: Text(l.understandRisk),
-                                  ),
-                                ],
+                          const SizedBox(height: 10),
+                          InfoLabel(
+                            label: l.driveLetter,
+                            child: ComboBox<String>(
+                              value: mountPoint,
+                              isExpanded: true,
+                              items: [
+                                for (final d in mountOptions)
+                                  ComboBoxItem(value: d, child: Text(d)),
+                              ],
+                              onChanged: (v) => v != null
+                                  ? setState(() => mountPoint = v)
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Checkbox(
+                            checked: writable,
+                            content: Expanded(
+                              child: Text(
+                                l.writableDriveWarning,
+                                // Not Colors.red: a fixed mid-red goes muddy against
+                                // the dark theme's surface. This token is per-brightness.
+                                style: TextStyle(
+                                  color:
+                                      theme.resources.systemFillColorCritical,
+                                ),
                               ),
-                            );
-                            setState(() => writable = ok ?? false);
-                          },
-                        ),
-                      ]),
+                            ),
+                            onChanged: (v) async {
+                              if (v != true) {
+                                setState(() => writable = false);
+                                return;
+                              }
+                              final ok = await showDialog<bool>(
+                                context: ctx,
+                                builder: (c2) => ContentDialog(
+                                  title: Text(l.enableWritableTitle),
+                                  content: Text(l.enableWritableBody),
+                                  actions: [
+                                    Button(
+                                      onPressed: () => Navigator.pop(c2, false),
+                                      child: Text(l.cancel),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(c2, true),
+                                      child: Text(l.understandRisk),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              setState(() => writable = ok ?? false);
+                            },
+                          ),
+                        ]),
                       section(l.settingsBackups, [
                         InfoLabel(
                           label: l.clutterLabel,
@@ -306,7 +314,11 @@ Future<void> showSettingsDialog(BuildContext context, AppController app) async {
                               ),
                               ComboBoxItem(
                                 value: 'system',
-                                child: Text(l.themeSystem),
+                                child: Text(
+                                  Platform.isMacOS
+                                      ? l.themeSystemMac
+                                      : l.themeSystem,
+                                ),
                               ),
                             ],
                             onChanged: (v) =>
@@ -314,14 +326,16 @@ Future<void> showSettingsDialog(BuildContext context, AppController app) async {
                           ),
                         ),
                       ]),
-                      section(l.settingsUpdates, [
-                        Checkbox(
-                          checked: checkUpdates,
-                          content: Text(l.checkUpdatesLabel),
-                          onChanged: (v) =>
-                              setState(() => checkUpdates = v ?? true),
-                        ),
-                      ]),
+                      // Releases (and so updates) are Windows-only so far.
+                      if (Platform.isWindows)
+                        section(l.settingsUpdates, [
+                          Checkbox(
+                            checked: checkUpdates,
+                            content: Text(l.checkUpdatesLabel),
+                            onChanged: (v) =>
+                                setState(() => checkUpdates = v ?? true),
+                          ),
+                        ]),
                       section(l.settingsAbout, [
                         Align(
                           alignment: Alignment.centerLeft,
@@ -383,7 +397,7 @@ Future<void> showRestoreDialog(
 ) async {
   final defaultTarget = app.checked.length == 1
       ? app.checked.first
-      : '/sdcard/Download';
+      : (app.activeVolume.isExternal ? app.activeRootPath : '/sdcard/Download');
   final target = TextEditingController(text: defaultTarget);
 
   await showDialog<void>(
@@ -470,7 +484,7 @@ Future<void> showScheduleDialog(BuildContext context, AppController app) async {
             ),
             const SizedBox(height: 8),
             Text(
-              l.scheduleNote,
+              Platform.isMacOS ? l.scheduleNoteMac : l.scheduleNote,
               style: FluentTheme.of(ctx).typography.caption,
             ),
           ],

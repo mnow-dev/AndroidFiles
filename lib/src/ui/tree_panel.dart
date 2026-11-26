@@ -6,9 +6,11 @@ import '../app_controller.dart';
 import '../backup_engine.dart' show fmtBytes;
 import '../models.dart';
 import 'dialogs.dart';
+import 'win_theme.dart';
 
-/// Lazy-loading device folder tree with checkboxes. Accepts files dropped
-/// from Explorer and pushes them back to the phone (restore).
+/// Left Bento Card: Lazy-loading device folder table with `Last Modified` and
+/// `Backup Status` columns (Proposal B), Select All header, and Windows
+/// Explorer drag-and-drop restore target.
 class TreePanel extends StatefulWidget {
   final AppController app;
 
@@ -31,17 +33,51 @@ class _TreePanelState extends State<TreePanel> {
 
   @override
   Widget build(BuildContext context) {
+    final p = WinPalette.of(context);
+    final l = AppLocalizations.of(context);
+
     if (app.adbMissing || app.adbDownloadProgress != null) {
-      return _AdbBootstrapPane(app: app);
+      return WinBentoCard(child: _AdbBootstrapPane(app: app));
     }
     if (app.selected == null) {
-      return Center(
-        child: Text(AppLocalizations.of(context).connectPhonePrompt,
-            textAlign: TextAlign.center),
+      return WinBentoCard(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FluentIcons.cell_phone, size: 32, color: p.textTertiary),
+                const SizedBox(height: 12),
+                Text(
+                  l.connectPhonePrompt,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: p.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                Button(
+                  onPressed: () => showWifiDialog(context, app),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(FluentIcons.wifi, size: 13),
+                      const SizedBox(width: 6),
+                      Text(l.wirelessDebugging),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
+
+    final root = app.activeRootPath;
     final rows = <Widget>[];
-    _buildRows(context, AppController.rootPath, 0, rows);
+    _buildRows(context, root, 0, rows);
+    final rootItems = app.children[root]?.length ?? 0;
+
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
@@ -50,46 +86,191 @@ class _TreePanelState extends State<TreePanel> {
         final paths = [for (final f in detail.files) f.path];
         if (paths.isNotEmpty) showRestoreDialog(context, app, paths);
       },
-      child: Container(
-        color: _dragging
-            ? FluentTheme.of(context).accentColor.withValues(alpha: 0.08)
-            : null,
-        // RawScrollbar: always visible and draggable — the fluent overlay
-        // scrollbar is too fiddly for a long tree. The built-in scrollbar
-        // is suppressed below so only this one renders.
-        child: RawScrollbar(
-          controller: _scroll,
-          thumbVisibility: true,
-          interactive: true,
-          thickness: 8,
-          minThumbLength: 48,
-          radius: const Radius.circular(4),
-          thumbColor: FluentTheme.of(context)
-              .resources
-              .textFillColorSecondary
-              .withValues(alpha: 0.35),
-          child: ScrollConfiguration(
-            behavior:
-                ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: ListView(
-              controller: _scroll,
-              padding: const EdgeInsets.only(top: 4, bottom: 4, right: 10),
-              children: [
-                _RootRow(app: app),
-                ...rows,
-              ],
-            ),
+      child: WinBentoCard(
+        child: Container(
+          color: _dragging ? p.accentSoft : p.cardBg,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Card header: Device Folders /sdcard | Select all
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: p.borderSoft, width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      app.hasExternalStorage
+                          ? app.activeVolume.label
+                          : 'Device Folders',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: p.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        root,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontFamily: winMonoFont,
+                          color: p.textTertiary,
+                        ),
+                      ),
+                    ),
+                    if (app.canSelectAll)
+                      Tooltip(
+                        message: app.allSelected
+                            ? l.deselectAllTooltip
+                            : l.selectAllTooltip,
+                        child: HyperlinkButton(
+                          onPressed: app.toggleAll,
+                          child: Text(
+                            app.allSelected ? l.deselectAll : l.selectAll,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: p.accentSoftFg,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Column header row (Proposal B): Folder / Name | Last Modified | Backup Status
+              Container(
+                height: 30,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: p.cardSubBg,
+                  border: Border(
+                    bottom: BorderSide(color: p.borderSoft, width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Folder / Name',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 96,
+                      child: Text(
+                        'Last Modified',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 118,
+                      child: Text(
+                        'Backup Status',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: RawScrollbar(
+                  controller: _scroll,
+                  thumbVisibility: true,
+                  interactive: true,
+                  thickness: 7,
+                  minThumbLength: 48,
+                  radius: const Radius.circular(4),
+                  thumbColor: p.textTertiary.withValues(alpha: 0.35),
+                  child: ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context)
+                        .copyWith(scrollbars: false),
+                    child: ListView(
+                      controller: _scroll,
+                      padding: const EdgeInsets.only(bottom: 4),
+                      children: rows,
+                    ),
+                  ),
+                ),
+              ),
+              // Bottom drop-zone & item count strip
+              Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: p.cardSubBg,
+                  border: Border(
+                    top: BorderSide(color: p.borderSoft, width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _dragging
+                            ? 'Release to push files to phone…'
+                            : 'Drop files from Windows Explorer here to push to phone',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              _dragging ? FontWeight.w600 : FontWeight.w400,
+                          color: _dragging ? p.accentSoftFg : p.textTertiary,
+                        ),
+                      ),
+                    ),
+                    if (rootItems > 0) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '$rootItems items',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: p.textTertiary,
+                          fontFeatures: winTabularFigures,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  void _buildRows(BuildContext context, String path, int depth, List<Widget> out) {
+  void _buildRows(
+    BuildContext context,
+    String path,
+    int depth,
+    List<Widget> out,
+  ) {
     if (!app.expanded.contains(path)) return;
     if (app.loading.contains(path)) {
       out.add(Padding(
-        padding: EdgeInsets.only(left: 28.0 * (depth + 1), top: 4, bottom: 4),
+        padding: EdgeInsets.only(left: 24.0 * (depth + 1), top: 8, bottom: 8),
         child: Row(children: [
           const SizedBox(
               width: 14, height: 14, child: ProgressRing(strokeWidth: 2)),
@@ -141,132 +322,154 @@ class _AdbBootstrapPane extends StatelessWidget {
   }
 }
 
-/// The connected device's friendly name (model, else serial) for the tree root.
-String _deviceName(AppController app) {
-  final d = app.selected;
-  if (d == null) return 'Phone';
-  return d.model.isNotEmpty ? d.model : d.serial;
-}
-
-class _RootRow extends StatelessWidget {
-  final AppController app;
-  const _RootRow({required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    final open = app.expanded.contains(AppController.rootPath);
-    return GestureDetector(
-      onTap: () =>
-          open ? app.collapse(AppController.rootPath) : app.expand(AppController.rootPath),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Row(children: [
-            Icon(open ? FluentIcons.chevron_down : FluentIcons.chevron_right, size: 16),
-            const SizedBox(width: 6),
-            const Icon(FluentIcons.cell_phone, size: 16),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: _deviceName(app),
-                    style: FluentTheme.of(context).typography.bodyStrong,
-                  ),
-                  TextSpan(
-                    text: '  /sdcard',
-                    style: FluentTheme.of(context).typography.caption?.copyWith(
-                          color: FluentTheme.of(context)
-                              .resources
-                              .textFillColorSecondary,
-                        ),
-                  ),
-                ]),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-            if (app.canSelectAll)
-              Tooltip(
-                message: app.allSelected
-                    ? AppLocalizations.of(context).deselectAllTooltip
-                    : AppLocalizations.of(context).selectAllTooltip,
-                child: HyperlinkButton(
-                  onPressed: app.toggleAll,
-                  child: Text(app.allSelected ? AppLocalizations.of(context).deselectAll : AppLocalizations.of(context).selectAll),
-                ),
-              ),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _EntryRow extends StatelessWidget {
+class _EntryRow extends StatefulWidget {
   final AppController app;
   final RemoteEntry entry;
   final int depth;
 
-  const _EntryRow({required this.app, required this.entry, required this.depth});
+  const _EntryRow({
+    required this.app,
+    required this.entry,
+    required this.depth,
+  });
+
+  @override
+  State<_EntryRow> createState() => _EntryRowState();
+}
+
+class _EntryRowState extends State<_EntryRow> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    final p = WinPalette.of(context);
+    final app = widget.app;
+    final entry = widget.entry;
     final open = app.expanded.contains(entry.path);
     final knownEmpty = entry.isDir && app.isKnownEmpty(entry.path);
     final selected = app.isSelected(entry.path);
-    final secondary =
-        FluentTheme.of(context).resources.textFillColorSecondary;
-    return GestureDetector(
-      onTap: entry.isDir && !knownEmpty
-          ? () => open ? app.collapse(entry.path) : app.expand(entry.path)
-          : null,
-      child: MouseRegion(
-        cursor: entry.isDir && !knownEmpty
-            ? SystemMouseCursors.click
-            : MouseCursor.defer,
-        child: Padding(
-          padding:
-              EdgeInsets.only(left: 8 + 20.0 * depth, top: 1, bottom: 1, right: 8),
-          child: Row(children: [
-            SizedBox(
-              width: 18,
-              child: entry.isDir && !knownEmpty
-                  ? Icon(open ? FluentIcons.chevron_down : FluentIcons.chevron_right, size: 16)
-                  : null,
+    final canExpand = entry.isDir && !knownEmpty;
+    final status = knownEmpty
+        ? EntryBackupStatus.unknown
+        : (app.entryBackupStatus[entry.path] ?? EntryBackupStatus.unknown);
+
+    final rowBg = selected
+        ? p.rowSelectedBg
+        : (_hovered ? p.rowHoverBg : const Color(0x00000000));
+
+    return MouseRegion(
+      cursor: canExpand ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: canExpand
+            ? () => open ? app.collapse(entry.path) : app.expand(entry.path)
+            : null,
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: rowBg,
+            border: Border(
+              bottom: BorderSide(color: p.borderSoft, width: 0.75),
             ),
-            Padding(
-              padding: const EdgeInsets.only(left: 6, right: 8, top: 4, bottom: 4),
-              child: Checkbox(
-                checked: selected,
-                onChanged: (_) => app.toggleChecked(entry),
+          ),
+          child: Row(
+            children: [
+              // Folder / Name cell
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 18.0 * widget.depth),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        child: canExpand
+                            ? Icon(
+                                open
+                                    ? FluentIcons.chevron_down
+                                    : FluentIcons.chevron_right,
+                                size: 11,
+                                color: p.textTertiary,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 4),
+                      Checkbox(
+                        checked: selected,
+                        onChanged: (_) => app.toggleChecked(entry),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        entry.isDir
+                            ? (entry.isLink
+                                ? FluentIcons.folder_open
+                                : FluentIcons.folder_fill)
+                            : FluentIcons.page,
+                        size: 15,
+                        color: entry.isDir
+                            ? (knownEmpty
+                                ? p.textTertiary.withValues(alpha: 0.45)
+                                : const Color(0xFFF2B824))
+                            : p.textTertiary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          entry.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: app.checked.contains(entry.path)
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: knownEmpty ? p.textTertiary : p.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (!entry.isDir) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          fmtBytes(entry.size),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: p.textTertiary,
+                            fontFeatures: winTabularFigures,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-            Icon(
-              entry.isDir
-                  ? (entry.isLink ? FluentIcons.folder_open : FluentIcons.folder_fill)
-                  : FluentIcons.page,
-              size: 16,
-              color: entry.isDir ? const Color(0xFFF6C244) : secondary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                entry.name,
-                overflow: TextOverflow.ellipsis,
-                style: knownEmpty ? TextStyle(color: secondary) : null,
+              const SizedBox(width: 8),
+              // Last Modified cell
+              SizedBox(
+                width: 96,
+                child: Text(
+                  knownEmpty
+                      ? 'Empty'
+                      : formatShortModified(entry.modified),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: knownEmpty ? p.textTertiary : p.textSecondary,
+                    fontFeatures: winTabularFigures,
+                  ),
+                ),
               ),
-            ),
-            if (!entry.isDir) ...[
-              const SizedBox(width: 12),
-              Text(fmtBytes(entry.size),
-                  style: FluentTheme.of(context)
-                      .typography
-                      .caption
-                      ?.copyWith(color: secondary)),
+              // Backup Status cell
+              SizedBox(
+                width: 118,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: buildBackupStatusBadge(context, status),
+                ),
+              ),
             ],
-          ]),
+          ),
         ),
       ),
     );

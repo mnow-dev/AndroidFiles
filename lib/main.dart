@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:local_notifier/local_notifier.dart';
 
@@ -8,6 +11,8 @@ import 'l10n/app_localizations.dart';
 import 'src/app_controller.dart';
 import 'src/settings.dart';
 import 'src/ui/home_screen.dart';
+import 'src/ui/macos/mac_home_screen.dart';
+import 'src/ui/macos/mac_theme.dart';
 
 Future<void> main(List<String> args) async {
   // Velopack dispatches install/update/uninstall hooks to the main exe as
@@ -18,6 +23,12 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isMacOS) {
+    // App Sandbox is intentionally disabled (we spawn adb and write to user-
+    // chosen volumes), so tell file_picker not to reject missing sandbox
+    // user-selected file entitlements when opening NSOpenPanel.
+    await FilePicker.skipEntitlementsChecks();
+  }
   await localNotifier.setup(appName: 'AndroidFiles');
   final settings = await Settings.load();
   // Get out of the install dir (Velopack launches us in current\). Every child
@@ -38,8 +49,9 @@ Future<void> main(List<String> args) async {
   runApp(AndroidFilesApp(controller: controller));
 }
 
-/// Explicit Segoe UI: DirectWrite may otherwise resolve a Light variant on
-/// some locales, which makes everything thin.
+/// Explicit Segoe UI on Windows: DirectWrite may otherwise resolve a Light
+/// variant on some locales, which makes everything thin. Elsewhere the
+/// platform's own UI font is used.
 ///
 /// Flutter renders text with grayscale AA and no ClearType, so body text comes
 /// out lighter than in native DirectWrite apps — plain w400 reads thin, and
@@ -55,7 +67,7 @@ FluentThemeData _theme(Brightness brightness) {
     brightness: brightness,
     accentColor: Colors.green,
     visualDensity: VisualDensity.compact,
-    fontFamily: 'Segoe UI',
+    fontFamily: Platform.isWindows ? 'Segoe UI' : null,
   );
   final t = base.typography;
   return base.copyWith(
@@ -72,36 +84,91 @@ FluentThemeData _theme(Brightness brightness) {
   );
 }
 
-class AndroidFilesApp extends StatelessWidget {
+class AndroidFilesApp extends StatefulWidget {
   final AppController controller;
 
   const AndroidFilesApp({super.key, required this.controller});
 
   @override
+  State<AndroidFilesApp> createState() => _AndroidFilesAppState();
+}
+
+class _AndroidFilesAppState extends State<AndroidFilesApp> {
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(
+      onExitRequested: () async {
+        widget.controller.shutdown();
+        return AppExitResponse.exit;
+      },
+      onDetach: () => widget.controller.shutdown(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => FluentApp(
-        title: 'AndroidFiles',
-        debugShowCheckedModeBanner: false,
-        locale: controller.locale,
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          FluentLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        themeMode: switch (controller.themeMode) {
-          'dark' => ThemeMode.dark,
-          'system' => ThemeMode.system,
-          _ => ThemeMode.light,
-        },
-        theme: _theme(Brightness.light),
-        darkTheme: _theme(Brightness.dark),
-        home: HomeScreen(app: controller),
-      ),
+      builder: (context, _) {
+        if (Platform.isMacOS) {
+          final brightness = switch (controller.themeMode) {
+            'dark' => Brightness.dark,
+            'light' => Brightness.light,
+            _ => null, // Follow macOS system appearance
+          };
+          return CupertinoApp(
+            title: 'AndroidFiles',
+            debugShowCheckedModeBanner: false,
+            locale: controller.locale,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: CupertinoThemeData(
+              brightness: brightness,
+              primaryColor: brightness == Brightness.dark
+                  ? MacPalette.dark.green
+                  : MacPalette.light.green,
+            ),
+            home: MacHomeScreen(app: controller),
+          );
+        }
+
+        return FluentApp(
+          title: 'AndroidFiles',
+          debugShowCheckedModeBanner: false,
+          locale: controller.locale,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            FluentLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          themeMode: switch (controller.themeMode) {
+            'dark' => ThemeMode.dark,
+            'system' => ThemeMode.system,
+            _ => ThemeMode.light,
+          },
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
+          home: HomeScreen(app: controller),
+        );
+      },
     );
   }
 }

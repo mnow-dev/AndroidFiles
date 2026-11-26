@@ -142,5 +142,12 @@
   "stepConnectPhone": "Podłącz telefon (USB lub ikona Wi-Fi powyżej)",
   "stepTickFolders": "Zaznacz foldery do zapisania w drzewie po lewej",
   "stepChooseDestination": "Wybierz miejsce zapisu, a następnie naciśnij Utwórz kopię",
-  "onboardingTips": "Wskazówki: przeciągnij pliki z Eksploratora na drzewo, aby skopiować je DO telefonu · zapisz wybór jako profil dla ponownych uruchomień jednym kliknięciem i harmonogramu · ikona dysku u góry pokazuje telefon bezpośrednio w Eksploratorze"
+  "onboardingTips": "Wskazówki: przeciągnij pliki z Eksploratora na drzewo, aby skopiować je DO telefonu · zapisz wybór jako profil dla ponownych uruchomień jednym kliknięciem i harmonogramu · ikona dysku u góry pokazuje telefon bezpośrednio w Eksploratorze",
+
+  "destinationPlaceholderMac": "Folder na tym Macu lub dysku zewnętrznym, np. /Volumes/MojDysk/PhoneBackup",
+  "onboardingTipsMac": "Wskazówki: przeciągnij pliki z Findera na drzewo, aby skopiować je DO telefonu · zapisz wybór jako profil dla ponownych uruchomień jednym kliknięciem i harmonogramu",
+  "themeSystemMac": "Zgodnie z macOS",
+  "locateAdb": "Znajdź adb",
+  "scheduleNoteMac": "Uruchamiane przez launchd, gdy jesteś zalogowany; uruchomienie pominięte podczas uśpienia Maca nastąpi po jego wybudzeniu. Telefon musi być podłączony (USB lub debugowanie Wi-Fi).",
+  "driveNotConnected": "Dysk „{name}” nie jest podłączony"
 }

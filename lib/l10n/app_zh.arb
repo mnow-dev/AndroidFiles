@@ -142,5 +142,12 @@
   "stepConnectPhone": "连接你的手机（USB 或上方的 Wi-Fi 图标）",
   "stepTickFolders": "在左侧树中勾选要保存的文件夹",
   "stepChooseDestination": "选择保存位置，然后按“备份”",
-  "onboardingTips": "提示：将文件从资源管理器拖到树上即可复制到手机 · 将所选保存为配置以便一键重跑和每日计划 · 顶部的磁盘图标可在资源管理器中直接显示手机"
+  "onboardingTips": "提示：将文件从资源管理器拖到树上即可复制到手机 · 将所选保存为配置以便一键重跑和每日计划 · 顶部的磁盘图标可在资源管理器中直接显示手机",
+
+  "destinationPlaceholderMac": "此 Mac 或外置硬盘上的文件夹，例如 /Volumes/MyDrive/PhoneBackup",
+  "onboardingTipsMac": "提示：将文件从访达拖到树上即可复制到手机 · 将所选保存为配置以便一键重跑和每日计划",
+  "themeSystemMac": "跟随 macOS",
+  "locateAdb": "定位 adb",
+  "scheduleNoteMac": "在你登录时通过 launchd 运行；Mac 睡眠期间错过的运行会在唤醒后执行。手机必须已连接（USB 或 Wi-Fi 调试）。",
+  "driveNotConnected": "硬盘“{name}”未连接"
 }

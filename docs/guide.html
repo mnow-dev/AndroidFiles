@@ -113,10 +113,10 @@
     <p class="tagline">Everything the app does, and exactly how to do it.</p>
   </header>
 
-  <p class="lead">AndroidFiles backs up your Android phone to your Windows PC
-  over ADB — the same channel developer tools use — instead of MTP (the
-  "phone appears in Explorer" method that stalls on big folders). This guide
-  walks through each feature in the order you'll meet them.</p>
+  <p class="lead">AndroidFiles backs up your Android phone to Windows or macOS
+  over ADB — the same channel developer tools use — instead of MTP (which
+  stalls on big folders). This guide walks through each feature in the order
+  you'll meet them.</p>
 
   <nav class="toc">
     <h2>Contents</h2>
@@ -128,7 +128,8 @@
       <li><a href="#clutter">Skip clutter</a></li>
       <li><a href="#layouts">Mirror &amp; Snapshot layouts</a></li>
       <li><a href="#verify">Verification</a></li>
-      <li><a href="#drive">The Explorer drive</a></li>
+      <li><a href="#cleanup">Clean Up Space</a></li>
+      <li><a href="#drive">The Explorer drive (Windows)</a></li>
       <li><a href="#restore">Restoring files</a></li>
       <li><a href="#profiles">Profiles &amp; scheduling</a></li>
       <li><a href="#wireless">Wireless backups</a></li>
@@ -139,12 +140,14 @@
   <h2 id="setup">Before you start</h2>
   <p>Two one-time steps get a phone talking to the app:</p>
   <ol>
-    <li><strong>Install AndroidFiles.</strong> Download
-      <code>AndroidFiles-win-Setup.exe</code> from the
-      <a href="https://github.com/mnow-dev/AndroidFiles/releases/latest">releases page</a>
-      and run it. It installs per-user with no admin prompt and keeps itself
-      up to date. (Prefer no installer? The portable ZIP on the same page runs
-      from any folder.)</li>
+    <li><strong>Install AndroidFiles.</strong>
+      On <strong>Windows</strong>, download <code>AndroidFiles-win-Setup.exe</code>
+      from the <a href="https://github.com/mnow-dev/AndroidFiles/releases/latest">releases page</a>
+      and run it (or grab the portable ZIP).
+      On <strong>macOS</strong> (Apple silicon &amp; Intel), download
+      <code>AndroidFiles-v*-macos.dmg</code> from the releases page and drag
+      <code>AndroidFiles.app</code> to <em>Applications</em> (or build from
+      source with <code>flutter build macos --release</code>).</li>
     <li><strong>Turn on USB debugging.</strong> On the phone, open
       <kbd>Settings</kbd> &rarr; <kbd>About phone</kbd> and tap <em>Build
       number</em> seven times to unlock <em>Developer options</em>, then enable
@@ -152,11 +155,15 @@
       phone in and tap <em>Allow</em> on the "Allow USB debugging?" prompt.</li>
   </ol>
   <div class="callout"><strong>No adb installed?</strong> You don't need it.
-    If AndroidFiles can't find adb, it downloads Google's official
-    platform-tools for you on first launch.</div>
-  <div class="callout"><strong>First-run warning.</strong> The app isn't
-    code-signed yet, so Windows SmartScreen may say "Windows protected your
-    PC." Click <em>More info</em> &rarr; <em>Run anyway</em>.</div>
+    On macOS AndroidFiles automatically detects Homebrew or Android Studio's
+    <code>adb</code>; if missing on either OS, it downloads Google's official
+    platform-tools on first launch.</div>
+  <div class="callout"><strong>First-run warning.</strong> Releases aren't
+    code-signed yet, so Windows SmartScreen may say "Windows protected your PC"
+    (click <em>More info</em> &rarr; <em>Run anyway</em>). If you copy a local
+    macOS build to another Mac, allow it under
+    <kbd>System Settings</kbd> &rarr; <kbd>Privacy &amp; Security</kbd> &rarr;
+    <em>Open Anyway</em>.</div>
 
   <h2 id="first">Your first backup</h2>
   <p>The app opens with a folder tree on the left and a backup panel on the
@@ -181,13 +188,24 @@
       <li><span class="mk">5</span> <strong>Back up</strong> — start the run (label updates once folders are ticked)</li>
       <li><span class="mk">6</span> <strong>Toolbar</strong> — refresh, mount drive, Wi-Fi, log, and Settings</li>
     </ol>
-    <figcaption>The main window, with a Pixel connected.</figcaption>
+    <figcaption>The main window on Windows, with a Pixel connected.</figcaption>
+  </figure>
+
+  <figure class="fig">
+    <div class="canvas">
+      <img src="screenshot-macos.png" alt="AndroidFiles on macOS: native 3-pane Finder and Inspector interface with a connected Pixel, folder tree, and backup controls">
+    </div>
+    <figcaption>The native macOS 3-pane Finder &amp; Inspector window.</figcaption>
   </figure>
 
   <ol>
-    <li><strong>Select your device.</strong> Once the phone is connected and
-      authorized, it appears in the device picker at the top. USB and wireless
-      devices are marked with their own icons.</li>
+    <li><strong>Select your device (and storage).</strong> Once the phone is
+      connected and authorized, it appears in the device picker (or sidebar on
+      macOS). USB and wireless devices are marked with their own icons. If your
+      phone has an external microSD card mounted, a <strong>Storage</strong>
+      selector appears automatically so you can switch between
+      <code>/sdcard</code> and <code>/storage/&lt;UUID&gt;</code> — external
+      card backups land cleanly in an <code>SD-&lt;UUID&gt;</code> subfolder.</li>
     <li><strong>Tick the folders to back up</strong> in the tree on the left —
       for example <code>/sdcard/DCIM</code>, <code>/sdcard/Download</code>, or
       whole <code>/sdcard</code>. Use the <em>Refresh</em> button in the
@@ -266,7 +284,8 @@
       backup."</li>
     <li><strong>Snapshot</strong> — creates a new dated folder for every run,
       so you can go back to how things looked on any date. Unchanged files are
-      NTFS-hardlinked to the previous snapshot, so months of history cost
+      hardlinked to the previous snapshot (NTFS on Windows, APFS / Mac OS
+      Extended on macOS; exFAT falls back to copying), so months of history cost
       almost no extra disk space — only changed files take new bytes.</li>
   </ul>
   <div class="callout">Snapshot pairs naturally with incremental and daily
@@ -287,7 +306,28 @@
       in Options — every run is then deep-verified as soon as it finishes.</li>
   </ul>
 
-  <h2 id="drive"><span class="em">🗂️</span>The Explorer drive</h2>
+  <h2 id="cleanup"><span class="em">✨</span>Clean Up Space</h2>
+  <p>Switch to <strong>Clean Up Space</strong> in the sidebar (or press
+  <kbd>⌘2</kbd> on macOS) to scan your phone storage and safely reclaim space:</p>
+  <ul>
+    <li><strong>Smart Proposals</strong> — highlights high-impact targets like
+      <em>DCIM Videos Only</em> (leaving all photos on your phone),
+      <em>Older Camera Roll</em> with customizable retention (keep last 1, 3, 6,
+      or 12 months), <em>Downloads</em>, <em>Messenger Media</em>, and files
+      already matched in your local backup folder.</li>
+    <li><strong>Large Files &amp; Folders</strong> — breaks down your biggest
+      space-hog folders and lets you filter files by size (20/50/100&nbsp;MB+)
+      or videos only.</li>
+    <li><strong>Duplicates</strong> — filters by exact byte size first, then
+      MD5-hashes only matching candidates on the phone and recommends which
+      original copy to keep (preferring <code>DCIM/Camera</code>).</li>
+    <li><strong>Back up first &amp; verify MD5</strong> — before removing any
+      selected files, AndroidFiles can stream any not-yet-backed-up items to
+      your Mac and verify their MD5 hashes against the local backup. Any file
+      that fails backup or verification is kept safe on the phone.</li>
+  </ul>
+
+  <h2 id="drive"><span class="em">🗂️</span>The Explorer drive (Windows)</h2>
   <p>Beyond backups, you can mount the phone as a real Windows drive letter and
   browse it in File Explorer. Click the <strong>drive</strong> icon in the
   toolbar to mount; the phone's storage appears at the configured letter
@@ -321,11 +361,11 @@
     once; every other feature works without it.</div>
 
   <h2 id="restore"><span class="em">↩️</span>Restoring files</h2>
-  <p>To push files back onto the phone, <strong>drag them from Explorer and drop
-  them onto the AndroidFiles window</strong>. A dialog asks which folder on the
-  device to place them in (defaulting to a sensible target), and warns that
-  existing files with the same names will be overwritten. Confirm with
-  <strong>Push</strong>.</p>
+  <p>To push files back onto the phone, <strong>drag them from Explorer or
+  Finder and drop them onto the AndroidFiles folder tree</strong>. A dialog asks
+  which folder on the device to place them in (defaulting to a sensible target),
+  and warns that existing files with the same names will be overwritten. Confirm
+  with <strong>Push</strong>.</p>
   <div class="warn"><strong>Restore writes to your phone.</strong> As with the
     writable drive, pushes overwrite same-named files on the device. Double-check
     the target folder before confirming.</div>
@@ -341,9 +381,10 @@
     <li>To automate it, open the <strong>schedule</strong> control for the
       active profile and set a daily time (<kbd>HH:MM</kbd>, 24-hour).</li>
   </ol>
-  <p>Scheduled backups run via Windows Task Scheduler while you're logged in and
-  raise a toast notification when they finish. The phone just needs to be
-  connected (USB or Wi-Fi) at that time.</p>
+  <p>Scheduled backups run via Windows Task Scheduler on Windows or
+  <code>launchd</code> LaunchAgents (<code>~/Library/LaunchAgents</code>) on
+  macOS while you're logged in, and raise a notification when they finish. The
+  phone just needs to be connected (USB or Wi-Fi) at that time.</p>
 
   <h2 id="wireless"><span class="em">📶</span>Wireless backups</h2>
   <p>No cable required. Click the <strong>Wi-Fi</strong> button in the toolbar
@@ -395,37 +436,37 @@
     </div>
     <ol class="legend">
       <li><span class="mk">1</span> <strong>adb path</strong> — set it, or <em>Test</em> the current one (applies after a restart)</li>
-      <li><span class="mk">2</span> <strong>Drive letter</strong> — mount point for the Explorer drive</li>
-      <li><span class="mk">3</span> <strong>Theme</strong> — Light, Dark, or Follow Windows</li>
+      <li><span class="mk">2</span> <strong>Drive letter</strong> — mount point for the Explorer drive (Windows)</li>
+      <li><span class="mk">3</span> <strong>Theme</strong> — Light, Dark, or Follow system</li>
       <li><span class="mk">4</span> <strong>Check for updates</strong> — ask GitHub on launch</li>
-      <li><span class="mk">5</span> <strong>Writable drive (danger)</strong> — opt in to writing to the phone</li>
+      <li><span class="mk">5</span> <strong>Writable drive (danger)</strong> — opt in to writing to the phone (Windows)</li>
       <li><span class="mk">6</span> <strong>Version</strong> — the installed AndroidFiles version</li>
     </ol>
-    <figcaption>The Settings dialog.</figcaption>
+    <figcaption>The Settings dialog (Windows; macOS uses a native sheet with the same core options, minus the Explorer drive settings).</figcaption>
   </figure>
 
   <p>The <strong>Appearance</strong> section also picks the <strong>language</strong>:
   AndroidFiles is translated into English, Spanish, German, French, Italian,
   Portuguese, Polish, Ukrainian, Japanese, Korean, and Chinese. It follows
-  Windows by default, or you can choose one. The <strong>About</strong> section
-  lists the open-source licenses.</p>
+  your system language by default, or you can choose one. The <strong>About</strong>
+  section lists the open-source licenses.</p>
 
-  <p>The installed app checks GitHub for a newer release on launch and, when one
-  exists, offers to <strong>download and apply it in place</strong> then relaunch
-  — no reinstall. (The portable build tells you an update is out and links you
-  to the download.) The current version is shown at the bottom of the Settings
-  dialog.</p>
+  <p>AndroidFiles checks GitHub for a newer release on launch. On Windows, the
+  installed app offers to <strong>download and apply it in place</strong> then
+  relaunch — no reinstall; the portable build and macOS builds tell you an
+  update is out and link you to the release. The current version is shown at
+  the bottom of Settings.</p>
 
   <div class="cta">
-    <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download for Windows</a>
+    <a class="btn primary" href="https://github.com/mnow-dev/AndroidFiles/releases/latest">Download (Windows &amp; macOS)</a>
     <a class="btn" href="./">Back to home</a>
     <a class="btn" href="https://github.com/mnow-dev/AndroidFiles">View on GitHub</a>
   </div>
 
   <footer>
     MIT licensed · <a href="https://github.com/mnow-dev/AndroidFiles">Source on GitHub</a> ·
-    Explorer drive via <a href="https://winfsp.dev">WinFsp</a>;
-    updates via <a href="https://velopack.io">Velopack</a>.
+    Windows Explorer drive via <a href="https://winfsp.dev">WinFsp</a>;
+    Windows updates via <a href="https://velopack.io">Velopack</a>.
   </footer>
 </div>
 <!-- Cloudflare Web Analytics (cookieless, no PII) -->

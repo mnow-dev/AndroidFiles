@@ -15,7 +15,8 @@ class Updater {
     return '$dir\\AndroidFilesUpdater.exe';
   }
 
-  static bool get available => File(exePath).existsSync();
+  /// Velopack packaging (and with it in-place updating) is Windows-only.
+  static bool get available => Platform.isWindows && File(exePath).existsSync();
 
   /// Whether this is a Velopack install that can self-update. Uses --version,
   /// which reports the installed version (non-empty) purely from the on-disk

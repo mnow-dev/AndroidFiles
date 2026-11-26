@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.2.0 — 2026-11-27
+
+- **Native macOS support & DMG releases:** Dedicated 3-pane Finder & Inspector
+  macOS UI with native menu bar shortcuts (`⌘1`/`⌘2`, `⌘B`, `⌘O`, `⌘S`, `⌘R`,
+  `⌘⇧W`, `⌘,`), APFS/HFS+ hardlinked snapshots, `launchd` daily scheduling,
+  Finder drag-and-drop restore, native Bonjour (`dns-sd`) wireless discovery,
+  keep-awake during transfers, and unplugged `/Volumes` drive protection.
+  Packaged macOS `.dmg` builds are now published alongside Windows releases.
+- **Clean Up Space (Windows & macOS):** New workspace to analyze phone storage,
+  inspect largest folders & files, find exact byte-identical MD5 duplicates
+  (two-stage size filter + batched device MD5), and act on smart proposals
+  (DCIM videos only, customizable 1/3/6/12-month retention windows, downloads,
+  messenger media, regenerable caches). Includes **Back up first + verify MD5**
+  before deleting any file from the phone.
+- **External microSD card support (#1):** Automatically discovers mounted
+  external microSD / USB storage volumes (`/storage/<UUID>`) alongside internal
+  `/sdcard`. Switch volumes in the sidebar (macOS) or context bar (Windows),
+  mount the active volume as a Windows Explorer drive (`AdbDrive --root`),
+  save per-volume profiles, and keep external card backups cleanly separated in
+  `SD-<UUID>/` subfolders.
+- **Redesigned Windows 11 Fluent UI:** New Mica navigation sidebar (Workspace,
+  Device, Profiles, and a pinned **Explorer Drive (`P:\`)** toggle card),
+  context top bar, and 3-Bento-card layout (Device Folders, Backup Destination
+  with disk-capacity bar, and Transfer Queue) in Light and Dark themes.
+- **Folder Modified & Backup Status columns (Windows & macOS):** Instant
+  local-disk badges (`Backed up`, `Partial`, `Modified`, `Not backed up`) and
+  human-friendly `Last Modified` dates right in the folder tree, with zero
+  extra ADB round-trips.
+- **New app icon** across macOS (`AppIcon.appiconset`), Windows (`app_icon.ico`),
+  and the website (`favicon.ico`).
+- **Reliability fixes:**
+  - Deduplicate dual-stack IPv4/IPv6 and `_adb-tls-connect._tcp` wireless
+    transports using `ro.serialno` so the same phone never appears twice.
+  - Cancel and terminate all active `adb` tar/push child processes cleanly on
+    app exit so no orphaned streams linger in the background.
+  - Persist backup destination immediately when chosen, preserve active
+    destination when applying a profile saved without one, serialize atomic
+    `settings.json` writes, and show a live activity spinner in the sidebar
+    while backups or space scans are running.
+
 ## v0.1.5 — 2026-09-25
 
 - Wireless backups split the files across 8 parallel tar streams, balanced

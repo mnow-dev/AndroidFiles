@@ -11,9 +11,11 @@ import 'dart:io';
 import 'package:android_files/src/adb_client.dart';
 import 'package:android_files/src/backup_engine.dart';
 import 'package:android_files/src/models.dart';
+import 'package:android_files/src/os.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const adbPath = r'D:\Dev\tools\platform-tools\adb.exe';
+final adbPath = Platform.environment['ADB'] ??
+    (Platform.isWindows ? r'D:\Dev\tools\platform-tools\adb.exe' : 'adb');
 const deviceDir = '/sdcard/AndroidFilesTest';
 
 Future<void> sh(AdbClient adb, String serial, String cmd) async {
@@ -60,14 +62,14 @@ void main() async {
 
   test('mirror full → incremental no-op → incremental picks up changes',
       () async {
-    final dest = '${scratch.path}\\mirror';
+    final dest = localJoin(scratch.path, 'mirror');
 
     final full = await runJob(
         engine,
         BackupJob(
             source: entry, serial: serial, destDir: dest, baseDir: dest, incremental: true));
     expect(full.status, JobStatus.done);
-    expect(countFiles('$dest\\AndroidFilesTest'), 3);
+    expect(countFiles(localJoin(dest, 'AndroidFilesTest')), 3);
 
     final noop = await runJob(
         engine,
@@ -85,13 +87,13 @@ void main() async {
             source: entry, serial: serial, destDir: dest, baseDir: dest, incremental: true));
     expect(incr.status, JobStatus.done);
     expect(incr.skippedFiles, 2);
-    expect(countFiles('$dest\\AndroidFilesTest'), 4);
+    expect(countFiles(localJoin(dest, 'AndroidFilesTest')), 4);
     expect(
-        File('$dest\\AndroidFilesTest\\a.txt').readAsStringSync().trim(), 'changed');
+        File(localJoin(dest, 'AndroidFilesTest/a.txt')).readAsStringSync().trim(), 'changed');
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('deep verify passes on a good backup and flags tampering', () async {
-    final dest = '${scratch.path}\\verify';
+    final dest = localJoin(scratch.path, 'verify');
     final job = await runJob(
         engine,
         BackupJob(
@@ -102,7 +104,7 @@ void main() async {
     expect(job.status, JobStatus.done);
     expect(job.warnings, isEmpty);
 
-    File('$dest\\AndroidFilesTest\\a.txt').writeAsStringSync('tampered');
+    File(localJoin(dest, 'AndroidFilesTest/a.txt')).writeAsStringSync('tampered');
     await engine.deepVerify(job);
     expect(job.status, JobStatus.doneWithWarnings);
     expect(job.warnings.any((w) => w.contains('md5 mismatch')), true);
@@ -112,7 +114,7 @@ void main() async {
       () async {
     engine.forcePullFallback = true;
     try {
-      final dest = '${scratch.path}\\pull';
+      final dest = localJoin(scratch.path, 'pull');
       final expected = await adb.fileCount(serial, deviceDir);
 
       final full = await runJob(
@@ -120,7 +122,7 @@ void main() async {
           BackupJob(
               source: entry, serial: serial, destDir: dest, baseDir: dest, incremental: false));
       expect(full.status, JobStatus.done);
-      expect(countFiles('$dest\\AndroidFilesTest'), expected);
+      expect(countFiles(localJoin(dest, 'AndroidFilesTest')), expected);
 
       await sh(adb, serial, "echo pulled-v2 > $deviceDir/a.txt");
       final incr = await runJob(
@@ -128,7 +130,7 @@ void main() async {
           BackupJob(
               source: entry, serial: serial, destDir: dest, baseDir: dest, incremental: true));
       expect(incr.status, JobStatus.done);
-      expect(File('$dest\\AndroidFilesTest\\a.txt').readAsStringSync().trim(),
+      expect(File(localJoin(dest, 'AndroidFilesTest/a.txt')).readAsStringSync().trim(),
           'pulled-v2');
     } finally {
       engine.forcePullFallback = false;
@@ -136,7 +138,7 @@ void main() async {
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('restore pushes a local file back to the device', () async {
-    final localFile = File('${scratch.path}\\restore me.txt')
+    final localFile = File(localJoin(scratch.path, 'restore me.txt'))
       ..writeAsStringSync('hello phone');
     final before = await adb.fileCount(serial, deviceDir);
     final job = await runJob(
@@ -153,16 +155,16 @@ void main() async {
 
   test('snapshot run hardlinks unchanged files from previous snapshot',
       () async {
-    final snapRoot = '${scratch.path}\\snaps';
-    final snap1 = '$snapRoot\\2026-07-17_100000';
-    final snap2 = '$snapRoot\\2026-07-17_110000';
+    final snapRoot = localJoin(scratch.path, 'snaps');
+    final snap1 = localJoin(snapRoot, '2026-07-17_100000');
+    final snap2 = localJoin(snapRoot, '2026-07-17_110000');
 
     final first = await runJob(
         engine,
         BackupJob(
             source: entry, serial: serial, destDir: snap1, baseDir: null, incremental: true));
     expect(first.status, JobStatus.done);
-    final baseline = countFiles('$snap1\\AndroidFilesTest');
+    final baseline = countFiles(localJoin(snap1, 'AndroidFilesTest'));
 
     await sh(adb, serial, "echo v2 > $deviceDir/b.txt");
     final second = await runJob(
@@ -171,11 +173,11 @@ void main() async {
             source: entry, serial: serial, destDir: snap2, baseDir: snap1, incremental: true));
     expect(second.status, JobStatus.done);
     expect(second.linkedFiles, baseline - 1);
-    expect(countFiles('$snap2\\AndroidFilesTest'), baseline);
-    expect(File('$snap2\\AndroidFilesTest\\b.txt').readAsStringSync().trim(), 'v2');
+    expect(countFiles(localJoin(snap2, 'AndroidFilesTest')), baseline);
+    expect(File(localJoin(snap2, 'AndroidFilesTest/b.txt')).readAsStringSync().trim(), 'v2');
     // Unchanged file must be a hardlink: same content, and editing the
     // snapshot copy is not something we do, so just verify contents match.
-    expect(File('$snap2\\AndroidFilesTest\\a.txt').readAsStringSync(),
-        File('$snap1\\AndroidFilesTest\\a.txt').readAsStringSync());
+    expect(File(localJoin(snap2, 'AndroidFilesTest/a.txt')).readAsStringSync(),
+        File(localJoin(snap1, 'AndroidFilesTest/a.txt')).readAsStringSync());
   }, timeout: const Timeout(Duration(minutes: 5)));
 }

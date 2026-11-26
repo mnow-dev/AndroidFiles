@@ -142,5 +142,12 @@
   "stepConnectPhone": "Collega il telefono (USB o l'icona Wi-Fi sopra)",
   "stepTickFolders": "Spunta le cartelle da salvare nell'albero a sinistra",
   "stepChooseDestination": "Scegli dove archiviarle, poi premi Backup",
-  "onboardingTips": "Suggerimenti: trascina i file da Esplora file sull'albero per copiarli SUL telefono · salva la selezione come profilo per riesecuzioni con un clic e pianificazione giornaliera · l'icona del disco in alto mostra il telefono direttamente in Esplora file"
+  "onboardingTips": "Suggerimenti: trascina i file da Esplora file sull'albero per copiarli SUL telefono · salva la selezione come profilo per riesecuzioni con un clic e pianificazione giornaliera · l'icona del disco in alto mostra il telefono direttamente in Esplora file",
+
+  "destinationPlaceholderMac": "Cartella su questo Mac o su un disco esterno, es. /Volumes/MioDisco/PhoneBackup",
+  "onboardingTipsMac": "Suggerimenti: trascina i file dal Finder sull'albero per copiarli SUL telefono · salva la selezione come profilo per riesecuzioni con un clic e pianificazione giornaliera",
+  "themeSystemMac": "Segui macOS",
+  "locateAdb": "Individua adb",
+  "scheduleNoteMac": "Viene eseguito tramite launchd mentre sei connesso; un'esecuzione persa durante lo stop del Mac avviene al risveglio. Il telefono deve essere connesso (USB o debug Wi-Fi).",
+  "driveNotConnected": "Il disco \"{name}\" non è collegato"
 }

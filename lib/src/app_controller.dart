@@ -9,8 +9,11 @@ import 'package:local_notifier/local_notifier.dart';
 import 'adb_client.dart';
 import 'adb_installer.dart';
 import 'backup_engine.dart';
+import 'cleanup_engine.dart';
 import 'drive_manager.dart';
+import 'keep_awake.dart';
 import 'models.dart';
+import 'os.dart';
 import 'selection.dart';
 import 'settings.dart';
 import 'update_checker.dart';
@@ -23,13 +26,27 @@ class AppController extends ChangeNotifier {
   late final BackupEngine engine =
       BackupEngine(adb, log: log, parallelStreams: settings.parallelStreams);
   late final DriveManager drive = DriveManager(settings: settings, log: log);
+  late final CleanupController cleanup =
+      CleanupController(adb: adb, log: log);
 
   static const rootPath = '/sdcard';
 
   List<AdbDevice> devices = [];
   AdbDevice? selected;
 
+  /// Browsable storage volumes on [selected] (internal `/sdcard` plus any
+  /// mounted external microSD / USB volumes under `/storage/<UUID>`).
+  List<StorageVolume> volumes = const [StorageVolume.internal];
+  StorageVolume activeVolume = StorageVolume.internal;
+  String get activeRootPath => activeVolume.path;
+  bool get hasExternalStorage => volumes.any((v) => v.isExternal);
+
+  /// Count of explicitly checked items inside [volume].
+  int checkedCountForVolume(StorageVolume volume) =>
+      checked.where(volume.containsPath).length;
+
   final Map<String, List<RemoteEntry>> children = {};
+  final Map<String, EntryBackupStatus> entryBackupStatus = {};
   final Set<String> expanded = {};
   final Set<String> loading = {};
   final Set<String> checked = {};
@@ -38,6 +55,7 @@ class AppController extends ChangeNotifier {
   /// under a selected folder). The nearest checked/excluded prefix wins.
   final Set<String> excluded = {};
   final Set<String> _prefetched = {};
+  final Set<String> _prefetchingParents = {};
 
   final List<String> logLines = [];
 
@@ -45,16 +63,56 @@ class AppController extends ChangeNotifier {
       TextEditingController(text: settings.lastDestination);
 
   Timer? _pollTimer;
+  Timer? _destSaveDebounce;
+  final Map<String, String> _hwSerialCache = {};
 
-  AppController(this.settings) {
+  AppController(this.settings, {bool startPolling = true}) {
     engine.addListener(notifyListeners);
+    engine.addListener(() => KeepAwake.set(engine.isRunning));
     engine.onDrained = _onQueueDrained;
     drive.addListener(notifyListeners);
-    destination.addListener(notifyListeners); // keeps the Run button state fresh
-    unawaited(_ensureAdb());
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollDevices());
-    _checkPendingUpdate();
-    if (settings.checkForUpdates) unawaited(_checkForUpdate());
+    cleanup.addListener(notifyListeners);
+    destination.addListener(_onDestinationChanged);
+    if (startPolling) {
+      unawaited(_ensureAdb());
+      _pollTimer =
+          Timer.periodic(const Duration(seconds: 3), (_) => _pollDevices());
+      _checkPendingUpdate();
+      if (settings.checkForUpdates && (Platform.isWindows || Platform.isMacOS)) {
+        unawaited(_checkForUpdate());
+      }
+    }
+  }
+
+  void _onDestinationChanged() {
+    notifyListeners(); // keeps the Run button state fresh
+    final trimmed = destination.text.trim();
+    if (trimmed == settings.lastDestination) return;
+    _destSaveDebounce?.cancel();
+    _destSaveDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (settings.lastDestination != trimmed) {
+        settings.lastDestination = trimmed;
+        unawaited(settings.save());
+      }
+      unawaited(refreshBackupStatuses());
+    });
+  }
+
+  /// Update the backup destination folder and persist it immediately so it is
+  /// remembered on the next launch even before starting a backup.
+  void setDestination(String path) {
+    final trimmed = path.trim();
+    _destSaveDebounce?.cancel();
+    if (settings.lastDestination != trimmed) {
+      settings.lastDestination = trimmed;
+      unawaited(settings.save());
+    }
+    if (destination.text != path) {
+      destination.text = path;
+    } else {
+      notifyListeners();
+    }
+    unawaited(refreshBackupStatuses());
   }
 
   // --- update handling (see UpdateChecker for detection, Updater for apply) ---
@@ -206,13 +264,14 @@ class AppController extends ChangeNotifier {
     _snapshotFinalDir = null;
     _snapshotJobs.clear();
     if (!allOk) {
-      log('Snapshot kept as ${partial.split('\\').last} — the run did not '
+      log('Snapshot kept as ${localBaseName(partial)} — the run did not '
           'complete; the next run will not use it as a base.');
       return;
     }
     try {
       await Directory(partial).rename(finalDir);
-      log('Snapshot finalized: ${finalDir.split('\\').last}');
+      log('Snapshot finalized: ${localBaseName(finalDir)}');
+      unawaited(refreshBackupStatuses());
     } catch (e) {
       log('Could not finalize snapshot $partial: $e');
     }
@@ -231,6 +290,7 @@ class AppController extends ChangeNotifier {
         '$done ok, $warn with warnings, $failed failed');
 
     unawaited(_finalizeSnapshot());
+    unawaited(refreshBackupStatuses());
 
     // Freshly pushed files should show up when the tree is next viewed.
     for (final t in _pendingRestoreTargets) {
@@ -270,6 +330,12 @@ class AppController extends ChangeNotifier {
       Timer(const Duration(seconds: 5), () => exit(4));
       return;
     }
+    final volume = unmountedVolume(destination.text);
+    if (volume != null) {
+      _notify('AndroidFiles backup failed', 'Drive "$volume" is not connected');
+      Timer(const Duration(seconds: 5), () => exit(5));
+      return;
+    }
     await startBackup();
   }
 
@@ -278,7 +344,7 @@ class AppController extends ChangeNotifier {
     final serial = selected?.serial;
     if (serial == null || localPaths.isEmpty) return;
     for (final p in localPaths) {
-      final name = p.substring(p.lastIndexOf(Platform.pathSeparator) + 1);
+      final name = localBaseName(p);
       engine.enqueue(BackupJob(
         source: RemoteEntry(name: name, path: targetDir, isDir: true),
         serial: serial,
@@ -290,10 +356,19 @@ class AppController extends ChangeNotifier {
     log('Queued restore of ${localPaths.length} item(s) → $targetDir');
   }
 
-  @override
-  void dispose() {
+  /// Cleanly stop all background transfers, mounts, and timers on app exit.
+  void shutdown() {
     _pollTimer?.cancel();
     _sizeDebounce?.cancel();
+    _destSaveDebounce?.cancel();
+    _qrTimer?.cancel();
+    engine.cancelAll();
+    unawaited(drive.unmount());
+  }
+
+  @override
+  void dispose() {
+    shutdown();
     destination.dispose();
     super.dispose();
   }
@@ -367,12 +442,15 @@ class AppController extends ChangeNotifier {
       // mDNS can see — pairing is one-time, but the port changes per boot.
       if (_pollCount++ % 10 == 0) unawaited(_autoConnectKnown());
       final found = await adb.devices();
+      await _populateWirelessHardwareSerials(found);
       _dedupeTransports(found);
       final changed = !listEquals(found, devices);
       devices = found;
       if (selected != null && !found.any((d) => d.serial == selected!.serial)) {
         log('Device ${selected!.label} disconnected');
         selected = null;
+        volumes = const [StorageVolume.internal];
+        activeVolume = StorageVolume.internal;
       }
       if (selected == null) {
         final ready = found.where((d) => d.isReady).toList();
@@ -385,7 +463,8 @@ class AppController extends ChangeNotifier {
           _rememberDevice(selected!.serial);
           log('Connected to ${selected!.label}');
           _resetTree();
-          unawaited(expand(rootPath));
+          unawaited(expand(activeRootPath));
+          unawaited(_loadVolumes(selected!.serial));
         }
       }
       if (changed) notifyListeners();
@@ -399,20 +478,109 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// One phone can appear under two Wi-Fi transports: adb's own mdns one
-  /// (`<instance>._adb-tls-connect._tcp`) and an ip:port connection. Drop
-  /// the mdns twin when mdns tells us both point at the same address.
-  void _dedupeTransports(List<AdbDevice> found) {
+  /// One phone can appear under multiple Wi-Fi transports at once:
+  ///   1. adb's own mDNS transport (`adb-<hw>-<id>._adb-tls-connect._tcp`)
+  ///      paired with an `ip:port` connection;
+  ///   2. Both IPv4 (`192.168.0.117:44533`) and link-local IPv6
+  ///      (`[fe80::...%en0]:44533`) endpoints on the exact same port.
+  /// Drop redundant twins, preferring IPv4 `ip:port`.
+  Future<void> _populateWirelessHardwareSerials(List<AdbDevice> found) async {
+    final wirelessReady = [
+      for (final d in found)
+        if (d.isReady && d.isWireless) d,
+    ];
+    if (wirelessReady.length < 2) return;
+    final missing = [
+      for (final d in wirelessReady)
+        if (!_hwSerialCache.containsKey(d.serial) &&
+            parseHardwareSerialFromMdns(d.serial) == null)
+          d.serial,
+    ];
+    if (missing.isEmpty) return;
+    await Future.wait([
+      for (final s in missing)
+        adb.hardwareSerial(s).then((hw) {
+          if (hw != null && hw.isNotEmpty) _hwSerialCache[s] = hw;
+        }),
+    ]);
+  }
+
+  void _dedupeTransports(List<AdbDevice> found) =>
+      dedupeTransports(found, _lastMdnsServices, _hwSerialCache);
+
+  static final _ipv4PortRe = RegExp(r'^\d+\.\d+\.\d+\.\d+:(\d+)$');
+  static final _ipv6PortRe = RegExp(r'^\[[^\]]+\]:(\d+)$');
+  static final _mdnsTlsConnectRe =
+      RegExp(r'^(.+?)\._adb-tls-connect\._tcp\.?$');
+  static final _mdnsHwSerialRe =
+      RegExp(r'^adb-([A-Za-z0-9]+)-[^.]+\._adb-tls-connect\._tcp\.?$');
+
+  /// Extract hardware serial from an ADB mDNS TLS-connect transport name like
+  /// `adb-3B241FDJH002HF-G9VfIY._adb-tls-connect._tcp` -> `3B241FDJH002HF`.
+  static String? parseHardwareSerialFromMdns(String serial) =>
+      _mdnsHwSerialRe.firstMatch(serial)?.group(1);
+
+  static int _wirelessTransportRank(String serial) {
+    if (_ipv4PortRe.hasMatch(serial)) return 0; // best: IPv4 ip:port
+    if (_mdnsTlsConnectRe.hasMatch(serial)) return 1; // next: mDNS TLS
+    if (_ipv6PortRe.hasMatch(serial)) return 2; // fallback: IPv6
+    return 3;
+  }
+
+  static void dedupeTransports(
+    List<AdbDevice> found, [
+    List<MdnsService> mdnsServices = const [],
+    Map<String, String> hwSerials = const {},
+  ]) {
     final ipByInstance = {
-      for (final s in _lastMdnsServices)
+      for (final s in mdnsServices)
         if (s.isConnect) s.instance: s.ip,
     };
+
+    // 1. Deduplicate wireless transports that share the exact same hardware
+    //    serial (`ro.serialno` or parsed from `adb-<hw>-...._adb-tls-connect`),
+    //    keeping the highest-priority transport (IPv4 > mDNS TLS > IPv6).
+    final bestByHw = <String, AdbDevice>{};
+    String? hwOf(AdbDevice d) =>
+        hwSerials[d.serial] ?? parseHardwareSerialFromMdns(d.serial);
+    for (final d in found) {
+      if (!d.isWireless) continue;
+      final hw = hwOf(d);
+      if (hw == null || hw.isEmpty) continue;
+      final cur = bestByHw[hw];
+      if (cur == null ||
+          (d.isReady && !cur.isReady) ||
+          (d.isReady == cur.isReady &&
+              _wirelessTransportRank(d.serial) <
+                  _wirelessTransportRank(cur.serial))) {
+        bestByHw[hw] = d;
+      }
+    }
     found.removeWhere((d) {
-      final m =
-          RegExp(r'^(.+?)\._adb-tls-connect\._tcp\.?$').firstMatch(d.serial);
+      if (!d.isWireless) return false;
+      final hw = hwOf(d);
+      return hw != null && bestByHw[hw] != null && bestByHw[hw]!.serial != d.serial;
+    });
+
+    // 2. Drop `_adb-tls-connect._tcp` twin when its `ip:port` is present via mDNS.
+    found.removeWhere((d) {
+      final m = _mdnsTlsConnectRe.firstMatch(d.serial);
       if (m == null) return false;
       final ip = ipByInstance[m.group(1)];
       return ip != null && found.any((o) => o.serial.startsWith('$ip:'));
+    });
+
+    // 3. Drop IPv6 `[...]:port` twin when an IPv4 entry shares the same port
+    //    and device model (same phone reached over dual-stack Wi-Fi).
+    found.removeWhere((d) {
+      final m6 = _ipv6PortRe.firstMatch(d.serial);
+      if (m6 == null) return false;
+      final port = m6.group(1)!;
+      return found.any((o) {
+        final m4 = _ipv4PortRe.firstMatch(o.serial);
+        if (m4 == null || m4.group(1) != port) return false;
+        return d.model.isEmpty || o.model.isEmpty || d.model == o.model;
+      });
     });
   }
 
@@ -422,7 +590,47 @@ class AppController extends ChangeNotifier {
     _rememberDevice(d.serial);
     _resetTree();
     notifyListeners();
-    unawaited(expand(rootPath));
+    unawaited(expand(activeRootPath));
+    unawaited(_loadVolumes(d.serial));
+  }
+
+  /// Discover internal + external storage volumes on [serial].
+  Future<void> _loadVolumes(String serial) async {
+    final found = await adb.storageVolumes(serial);
+    if (selected?.serial != serial) return;
+    final prevPaths = [for (final v in volumes) v.path];
+    final nextPaths = [for (final v in found) v.path];
+    volumes = found;
+    final match = found.where((v) => v.path == activeVolume.path).firstOrNull;
+    if (match != null) {
+      activeVolume = match;
+    } else {
+      activeVolume = StorageVolume.internal;
+      unawaited(expand(activeRootPath));
+    }
+    if (!listEquals(prevPaths, nextPaths)) {
+      if (found.length > 1) {
+        final ext = found.where((v) => v.isExternal).map((v) => v.path).join(', ');
+        log('Detected external storage: $ext');
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Switch the active browsed/mounted/cleanup storage root (e.g. internal
+  /// `/sdcard` vs external `/storage/<UUID>`). Existing selections on other
+  /// volumes are preserved so a backup can span internal + SD card together.
+  void selectVolume(StorageVolume volume) {
+    if (volume.path == activeVolume.path) return;
+    activeVolume = volume;
+    if (!volumes.any((v) => v.path == volume.path)) {
+      volumes = [...volumes, volume];
+    }
+    cleanup.resetForDevice(selected?.serial, rootPath: volume.path);
+    notifyListeners();
+    if (selected != null) {
+      unawaited(expand(activeRootPath));
+    }
   }
 
   /// Persist the current device so the next launch re-selects it. Not cleared
@@ -437,24 +645,36 @@ class AppController extends ChangeNotifier {
   void refreshTree() {
     if (selected == null) return;
     final wasChecked = {...checked};
-    _resetTree();
+    final wasExcluded = {...excluded};
+    final prevVolume = activeVolume;
+    _resetTree(keepVolume: true);
+    activeVolume = prevVolume;
     checked.addAll(wasChecked); // a refresh shouldn't drop the selection
+    excluded.addAll(wasExcluded);
     _scheduleSelectionSize();
     notifyListeners();
-    unawaited(expand(rootPath));
+    unawaited(expand(activeRootPath));
+    unawaited(_loadVolumes(selected!.serial));
   }
 
-  void _resetTree() {
+  void _resetTree({bool keepVolume = false}) {
+    if (!keepVolume) {
+      volumes = const [StorageVolume.internal];
+      activeVolume = StorageVolume.internal;
+    }
     children.clear();
+    entryBackupStatus.clear();
     expanded.clear();
     loading.clear();
     checked.clear();
     excluded.clear();
     _prefetched.clear();
+    _prefetchingParents.clear();
     _sizeDebounce?.cancel();
     _sizeToken++;
     selectionBytes = 0;
     measuringSelection = false;
+    cleanup.resetForDevice(selected?.serial, rootPath: activeRootPath);
   }
 
   /// True once we know [path] is an empty directory (drives the chevron).
@@ -467,6 +687,7 @@ class AppController extends ChangeNotifier {
     if (children.containsKey(path) || loading.contains(path)) {
       notifyListeners();
       unawaited(_prefetchChildren(path));
+      unawaited(_refreshBackupStatusFor(path));
       return;
     }
     loading.add(path);
@@ -481,6 +702,225 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     }
     unawaited(_prefetchChildren(path));
+    unawaited(_refreshBackupStatusFor(path));
+  }
+
+  int _statusToken = 0;
+
+  /// Recompute local backup badges (`Backed up` / `Modified` / `Not backed up`)
+  /// for every currently loaded tree folder against the active destination.
+  /// Purely local filesystem checks — zero extra ADB round-trips.
+  Future<void> refreshBackupStatuses() async {
+    final token = ++_statusToken;
+    final dest = destination.text.trim();
+    if (dest.isEmpty || unmountedVolume(dest) != null) {
+      if (entryBackupStatus.isNotEmpty) {
+        entryBackupStatus.clear();
+        notifyListeners();
+      }
+      return;
+    }
+    final rootDir = Directory(dest);
+    if (!await rootDir.exists()) {
+      if (entryBackupStatus.isNotEmpty) {
+        entryBackupStatus.clear();
+        notifyListeners();
+      }
+      return;
+    }
+    final snapBase = await _latestSnapshot(dest);
+    final effectiveBase = snapBase ?? dest;
+    if (token != _statusToken) return;
+
+    final next = <String, EntryBackupStatus>{};
+    for (final entry in children.entries) {
+      final parentPath = entry.key;
+      final isPrefetching = _prefetchingParents.contains(parentPath);
+      for (final e in entry.value) {
+        final probed = await _probeEntryBackupStatus(e, effectiveBase);
+        next[e.path] = (e.isDir &&
+                probed != EntryBackupStatus.notBackedUp &&
+                probed != EntryBackupStatus.unknown &&
+                !children.containsKey(e.path) &&
+                isPrefetching)
+            ? EntryBackupStatus.checking
+            : probed;
+        if (token != _statusToken) return;
+      }
+    }
+    _rollUpPartialStatuses(next);
+    entryBackupStatus
+      ..clear()
+      ..addAll(next);
+    notifyListeners();
+  }
+
+  Future<void> _refreshBackupStatusFor(String parentPath) async {
+    final list = children[parentPath];
+    if (list == null || list.isEmpty) return;
+    final dest = destination.text.trim();
+    if (dest.isEmpty || unmountedVolume(dest) != null) return;
+    if (!await Directory(dest).exists()) return;
+    final effectiveBase = (await _latestSnapshot(dest)) ?? dest;
+    final isPrefetching = _prefetchingParents.contains(parentPath);
+    var changed = false;
+    for (final e in list) {
+      final probed = await _probeEntryBackupStatus(e, effectiveBase);
+      final s = (e.isDir &&
+              probed != EntryBackupStatus.notBackedUp &&
+              probed != EntryBackupStatus.unknown &&
+              !children.containsKey(e.path) &&
+              isPrefetching)
+          ? EntryBackupStatus.checking
+          : probed;
+      if (entryBackupStatus[e.path] != s) {
+        entryBackupStatus[e.path] = s;
+        changed = true;
+      }
+    }
+    if (_rollUpPartialStatuses(entryBackupStatus)) changed = true;
+    if (changed) notifyListeners();
+  }
+
+  /// Roll up folder statuses bottom-up from loaded children so a directory
+  /// accurately reflects partial/modified/complete state instead of relying
+  /// only on the directory's own mtime.
+  bool _rollUpPartialStatuses(Map<String, EntryBackupStatus> statuses) {
+    // Process deepest directories first so grandchild state bubbles up cleanly
+    // (e.g. /sdcard/DCIM/Camera -> /sdcard/DCIM).
+    final dirs = children.keys.toList()
+      ..sort((a, b) => b.split('/').length.compareTo(a.split('/').length));
+    var changed = false;
+    for (final parentPath in dirs) {
+      if (!statuses.containsKey(parentPath)) continue;
+      final kids = children[parentPath];
+      if (kids == null || kids.isEmpty) continue;
+      var backed = 0;
+      var modified = 0;
+      var partial = 0;
+      var missing = 0;
+      for (final c in kids) {
+        if (c.isDir && isKnownEmpty(c.path)) continue;
+        final s = statuses[c.path];
+        if (s == null || s == EntryBackupStatus.unknown) continue;
+        switch (s) {
+          case EntryBackupStatus.backedUp:
+            backed++;
+          case EntryBackupStatus.modified:
+            modified++;
+          case EntryBackupStatus.partial:
+            partial++;
+          case EntryBackupStatus.notBackedUp:
+            missing++;
+          case EntryBackupStatus.checking:
+          case EntryBackupStatus.unknown:
+            break;
+        }
+      }
+      final total = backed + modified + partial + missing;
+      if (total == 0) continue;
+      final EntryBackupStatus rolled;
+      if (missing == total) {
+        rolled = EntryBackupStatus.notBackedUp;
+      } else if (missing > 0 || partial > 0) {
+        rolled = EntryBackupStatus.partial;
+      } else if (modified > 0) {
+        rolled = EntryBackupStatus.modified;
+      } else {
+        rolled = EntryBackupStatus.backedUp;
+      }
+      if (statuses[parentPath] != rolled) {
+        statuses[parentPath] = rolled;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  static Future<EntryBackupStatus> _probeEntryBackupStatus(
+    RemoteEntry entry,
+    String effectiveBase,
+  ) async {
+    return probeEntryBackupStatus(entry, effectiveBase);
+  }
+
+  /// Resolve local backup status for [entry] against [effectiveBase].
+  /// Supports both full-hierarchy backups (`<dest>/DCIM/Camera`) and nested
+  /// subfolder backups (`<dest>/Camera`, which is how `BackupEngine` extracts
+  /// when a user ticks `/sdcard/DCIM/Camera` directly).
+  static Future<EntryBackupStatus> probeEntryBackupStatus(
+    RemoteEntry entry,
+    String effectiveBase,
+  ) async {
+    final extId = externalStorageId(entry.path);
+    final String rel;
+    final String localBase;
+    if (extId != null) {
+      final prefix = '/storage/$extId/';
+      if (!entry.path.startsWith(prefix)) return EntryBackupStatus.unknown;
+      rel = entry.path.substring(prefix.length);
+      final namespaced = localJoin(effectiveBase, 'SD-$extId');
+      localBase = await Directory(namespaced).exists() ? namespaced : effectiveBase;
+    } else if (entry.path.startsWith('/sdcard/')) {
+      rel = entry.path.substring('/sdcard/'.length);
+      localBase = effectiveBase;
+    } else {
+      return EntryBackupStatus.unknown;
+    }
+
+    // Try full relative path first (`DCIM/Camera/a.jpg`), then progressively
+    // shorter suffix paths (`Camera/a.jpg`, `Camera`) to match backups where a
+    // subfolder was selected directly as the backup root.
+    final segs = rel.split('/');
+    FileStat? matchedStat;
+    String? matchedLocalPath;
+    for (var start = 0; start < segs.length; start++) {
+      final candidateRel = segs.sublist(start).join('/');
+      final localPath = localJoin(localBase, candidateRel);
+      final stat = await FileStat.stat(localPath);
+      if (stat.type == FileSystemEntityType.notFound) continue;
+      if (entry.isDir && stat.type != FileSystemEntityType.directory) continue;
+      if (!entry.isDir && stat.type != FileSystemEntityType.file) continue;
+      matchedStat = stat;
+      matchedLocalPath = localPath;
+      break;
+    }
+
+    if (matchedStat == null || matchedLocalPath == null) {
+      return EntryBackupStatus.notBackedUp;
+    }
+    final remoteTime = parseRemoteModified(entry.modified);
+    if (!entry.isDir) {
+      if (matchedStat.size != entry.size) return EntryBackupStatus.modified;
+      if (remoteTime != null &&
+          remoteTime.difference(matchedStat.modified).inMinutes > 2) {
+        return EntryBackupStatus.modified;
+      }
+      return EntryBackupStatus.backedUp;
+    }
+    // An empty local directory does not count as backed up.
+    if (await Directory(matchedLocalPath).list(followLinks: false).isEmpty) {
+      return EntryBackupStatus.notBackedUp;
+    }
+    if (remoteTime != null &&
+        remoteTime.difference(matchedStat.modified).inMinutes > 2) {
+      return EntryBackupStatus.modified;
+    }
+    return EntryBackupStatus.backedUp;
+  }
+
+  /// Parse toybox `ls -lA` timestamps (`YYYY-MM-DD HH:MM`) into local DateTime.
+  static DateTime? parseRemoteModified(String raw) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$')
+        .firstMatch(raw.trim());
+    if (m == null) return null;
+    return DateTime(
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+      int.parse(m.group(4)!),
+      int.parse(m.group(5)!),
+    );
   }
 
   /// Fetch listings one level below an expanded folder in the background, so
@@ -492,16 +932,26 @@ class AppController extends ChangeNotifier {
         .where((e) => e.isDir)
         .toList();
     if (dirs.length > 200) return; // don't hammer adb on giant folders
-    for (final d in dirs) {
-      if (selected?.serial != serial) return; // device changed mid-prefetch
-      if (children.containsKey(d.path) || loading.contains(d.path)) continue;
-      try {
-        children[d.path] = await adb.list(serial, d.path);
-        notifyListeners();
-      } catch (_) {
-        // Unknown stays unknown; the chevron remains and a manual expand
-        // will surface the error in the log.
+    _prefetchingParents.add(parent);
+    // Mark locally-existing dirs under [parent] as `checking` while we inspect
+    // their contents so they don't flash "Backed up" before rolling to Partial.
+    unawaited(_refreshBackupStatusFor(parent));
+    try {
+      for (final d in dirs) {
+        if (selected?.serial != serial) return; // device changed mid-prefetch
+        if (children.containsKey(d.path) || loading.contains(d.path)) continue;
+        try {
+          children[d.path] = await adb.list(serial, d.path);
+          await _refreshBackupStatusFor(d.path);
+          notifyListeners();
+        } catch (_) {
+          // Unknown stays unknown; the chevron remains and a manual expand
+          // will surface the error in the log.
+        }
       }
+    } finally {
+      _prefetchingParents.remove(parent);
+      unawaited(_refreshBackupStatusFor(parent));
     }
   }
 
@@ -569,32 +1019,43 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Whether the root's top-level items are loaded (so select-all is possible).
-  bool get canSelectAll => (children[rootPath] ?? const []).isNotEmpty;
+  /// Whether the active volume's top-level items are loaded (so select-all is possible).
+  bool get canSelectAll => (children[activeRootPath] ?? const []).isNotEmpty;
 
-  /// Whether every top-level item under the root is selected.
+  /// Whether every top-level item under the active volume is selected.
   bool get allSelected {
-    final roots = children[rootPath];
+    final roots = children[activeRootPath];
     if (roots == null || roots.isEmpty) return false;
     return roots.every((e) => checked.contains(e.path));
   }
 
-  /// One control: select everything, or clear it if everything is selected.
-  void toggleAll() => allSelected ? uncheckAll() : checkAll();
+  /// One control: select everything in the active volume, or clear its selection.
+  void toggleAll() => allSelected ? uncheckActiveVolume() : checkAll();
 
-  /// Select every top-level item under the root (each covers its own subtree).
+  /// Select every top-level item under the active volume (each covers its subtree).
   void checkAll() {
-    final roots = children[rootPath];
+    final roots = children[activeRootPath];
     if (roots == null || roots.isEmpty) return;
-    excluded.clear();
+    excluded.removeWhere(activeVolume.containsPath);
     checked
-      ..clear()
+      ..removeWhere(activeVolume.containsPath)
       ..addAll(roots.map((e) => e.path));
     _scheduleSelectionSize();
     notifyListeners();
   }
 
-  /// Clear the whole selection.
+  /// Clear selection within the active storage volume only.
+  void uncheckActiveVolume() {
+    final had = checked.any(activeVolume.containsPath) ||
+        excluded.any(activeVolume.containsPath);
+    if (!had) return;
+    checked.removeWhere(activeVolume.containsPath);
+    excluded.removeWhere(activeVolume.containsPath);
+    _scheduleSelectionSize();
+    notifyListeners();
+  }
+
+  /// Clear the whole selection across all volumes.
   void uncheckAll() {
     if (checked.isEmpty && excluded.isEmpty) return;
     checked.clear();
@@ -627,6 +1088,13 @@ class AppController extends ChangeNotifier {
     final serial = selected?.serial;
     final destDir = destination.text.trim();
     if (serial == null || destDir.isEmpty) return;
+    // Never write to a /Volumes path whose drive is unplugged (macOS): it
+    // would land on the startup disk instead. The UI disables the button too.
+    final volume = unmountedVolume(destDir);
+    if (volume != null) {
+      log('Drive "$volume" is not connected — nothing was backed up');
+      return;
+    }
     settings.lastDestination = destDir;
     unawaited(settings.save());
     final entries = checkedEntries();
@@ -644,9 +1112,9 @@ class AppController extends ChangeNotifier {
           '_${two(t.hour)}${two(t.minute)}${two(t.second)}';
       // Stage under .partial; renamed to the final name only when every job
       // of the run succeeds, so a half-finished snapshot is unmistakable.
-      targetDir = '$destDir\\$stamp.partial';
+      targetDir = localJoin(destDir, '$stamp.partial');
       _snapshotPartialDir = targetDir;
-      _snapshotFinalDir = '$destDir\\$stamp';
+      _snapshotFinalDir = localJoin(destDir, stamp);
       _snapshotJobs.clear();
       baseDir = await _latestSnapshot(destDir);
     }
@@ -655,11 +1123,18 @@ class AppController extends ChangeNotifier {
       // Excluded descendants of this entry become path-shaped ignore patterns
       // (relative to the source's parent, matching the manifest keys).
       final prefix = AdbClient.dirname(e.path).length + 1;
+      // Keep external SD card backups in a dedicated `SD-<UUID>` subfolder so
+      // they never collide with internal `/sdcard` folders (e.g. two DCIMs).
+      final extSubdir = externalStorageBackupSubdir(e.path);
+      final jobDest = extSubdir == null ? targetDir : localJoin(targetDir, extSubdir);
+      final jobBase = (baseDir == null || extSubdir == null)
+          ? baseDir
+          : localJoin(baseDir, extSubdir);
       final job = BackupJob(
         source: e,
         serial: serial,
-        destDir: targetDir,
-        baseDir: baseDir,
+        destDir: jobDest,
+        baseDir: jobBase,
         incremental: incremental,
         ignore: [
           if (settings.skipClutter) ...settings.clutterPatterns,
@@ -681,11 +1156,11 @@ class AppController extends ChangeNotifier {
     String? latest;
     await for (final e in root.list(followLinks: false)) {
       if (e is! Directory) continue;
-      final name = e.path.substring(e.path.lastIndexOf('\\') + 1);
+      final name = localBaseName(e.path);
       if (!_snapshotDirRe.hasMatch(name)) continue;
       if (latest == null || name.compareTo(latest) > 0) latest = name;
     }
-    return latest == null ? null : '$destDir\\$latest';
+    return latest == null ? null : localJoin(destDir, latest);
   }
 
   Future<void> toggleDrive() async {
@@ -698,7 +1173,7 @@ class AppController extends ChangeNotifier {
       log('Connect a device before mounting the drive');
       return;
     }
-    await drive.mount(serial, settings.adbPath);
+    await drive.mount(serial, settings.adbPath, rootPath: activeRootPath);
     if (drive.mounted) unawaited(_revealMount());
   }
 
@@ -736,6 +1211,7 @@ class AppController extends ChangeNotifier {
   String? _qrName;
   String? _qrPassword;
   String? _pairedHostIp;
+  String? _pairedGuid;
 
   static String _randToken(int n) {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -749,12 +1225,12 @@ class AppController extends ChangeNotifier {
     _qrName = 'androidfiles-${_randToken(6)}';
     _qrPassword = _randToken(10);
     _pairedHostIp = null;
+    _pairedGuid = null;
     qrPayload = 'WIFI:T:ADB;S:$_qrName;P:$_qrPassword;;';
     pairingStatus = 'Scan the code from Wireless debugging → '
         '"Pair device with QR code"';
     var busy = false;
-    _qrTimer?.cancel();
-    _qrTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+    Future<void> tick() async {
       if (busy) return;
       busy = true;
       try {
@@ -764,7 +1240,11 @@ class AppController extends ChangeNotifier {
       } finally {
         busy = false;
       }
-    });
+    }
+
+    _qrTimer?.cancel();
+    _qrTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+    unawaited(tick());
     notifyListeners();
   }
 
@@ -773,11 +1253,14 @@ class AppController extends ChangeNotifier {
     _qrTimer = null;
     qrPayload = null;
     _qrPassword = null;
+    _pairedHostIp = null;
+    _pairedGuid = null;
     notifyListeners();
   }
 
   Future<void> _qrTick() async {
     final services = await adb.mdnsServices();
+    _lastMdnsServices = services;
     discoveredConnectable = [for (final s in services) if (s.isConnect) s];
 
     if (_qrPassword != null) {
@@ -792,24 +1275,55 @@ class AppController extends ChangeNotifier {
         if (res.toLowerCase().contains('success')) {
           _qrPassword = null;
           _pairedHostIp = pairing.ip;
+          _pairedGuid = RegExp(r'\[guid=([^\]]+)\]').firstMatch(res)?.group(1);
           pairingStatus = 'Paired ✓ — connecting…';
+          notifyListeners();
         } else {
           pairingStatus = 'Pairing failed: $res';
         }
       }
-    } else if (_pairedHostIp != null) {
-      final connect = discoveredConnectable
-          .where((s) => s.ip == _pairedHostIp)
-          .firstOrNull;
+    }
+
+    if (_qrPassword == null && (_pairedHostIp != null || _pairedGuid != null)) {
+      // Prefer exact mDNS guid match from `adb pair` output (works even when
+      // pairing used IPv6 and connect uses IPv4), else match by host IP.
+      final connect = (_pairedGuid != null
+              ? discoveredConnectable
+                  .where((s) => s.instance == _pairedGuid)
+                  .firstOrNull
+              : null) ??
+          (_pairedHostIp != null
+              ? discoveredConnectable
+                  .where((s) => s.ip == _pairedHostIp)
+                  .firstOrNull
+              : null);
       if (connect != null) {
         final res = await adb.connect(connect.address);
         log('adb connect ${connect.address} → $res');
-        if (res.contains('connected')) {
+        if (res.toLowerCase().contains('connected')) {
           pairingStatus = 'Connected ✓';
           _pairedHostIp = null;
+          _pairedGuid = null;
           _qrTimer?.cancel();
           _qrTimer = null;
           await _pollDevices();
+        }
+      } else {
+        // ADB itself may have already auto-connected the phone via mDNS.
+        await _pollDevices();
+        final alreadyUp = devices.any(
+          (d) =>
+              d.isReady &&
+              ((_pairedGuid != null && d.serial.startsWith(_pairedGuid!)) ||
+                  (_pairedHostIp != null &&
+                      d.serial.contains(_pairedHostIp!))),
+        );
+        if (alreadyUp) {
+          pairingStatus = 'Connected ✓';
+          _pairedHostIp = null;
+          _pairedGuid = null;
+          _qrTimer?.cancel();
+          _qrTimer = null;
         }
       }
     }
@@ -832,10 +1346,14 @@ class AppController extends ChangeNotifier {
     _lastMdnsServices = services;
     for (final s in services) {
       if (!s.isConnect) continue;
-      // Already connected — either as ip:port or as adb's own mdns
+      // Already connected — as IPv4, IPv6 on the same port, or adb's own mdns
       // transport (serial starts with the mdns instance name).
+      final colon = s.address.lastIndexOf(':');
+      final portSuffix = colon == -1 ? '' : s.address.substring(colon);
       if (devices.any((d) =>
-          d.serial.contains(s.ip) || d.serial.startsWith(s.instance))) {
+          d.serial.contains(s.ip) ||
+          d.serial.startsWith(s.instance) ||
+          (portSuffix.isNotEmpty && d.serial.endsWith(portSuffix)))) {
         continue;
       }
       final last = _autoConnectAttempts[s.address];
@@ -862,9 +1380,49 @@ class AppController extends ChangeNotifier {
       ..clear()
       ..addAll(p.paths);
     excluded.clear();
-    destination.text = p.destination;
+    if (p.destination.trim().isNotEmpty) {
+      setDestination(p.destination);
+    } else if (destination.text.trim().isEmpty &&
+        settings.lastDestination.trim().isNotEmpty) {
+      destination.text = settings.lastDestination;
+    }
     settings.layout = p.layout;
     settings.incremental = p.incremental;
+
+    // If the profile targets an external SD card volume, switch the active
+    // tree root to it so the user immediately sees their selected folders.
+    final targetRoot = p.rootPath ??
+        (p.paths.isNotEmpty && externalStorageId(p.paths.first) != null
+            ? '/storage/${externalStorageId(p.paths.first)!}'
+            : rootPath);
+    final match = volumes.where((v) => v.path == targetRoot).firstOrNull;
+    if (match != null) {
+      activeVolume = match;
+    } else {
+      final extId = externalStorageId(targetRoot);
+      activeVolume = extId != null
+          ? StorageVolume(
+              path: targetRoot,
+              label: 'SD card ($extId)',
+              isExternal: true,
+            )
+          : StorageVolume.internal;
+    }
+    if (selected != null) {
+      unawaited(expand(activeRootPath));
+      // Auto-expand ancestor folders of checked subpaths (e.g. /sdcard/DCIM
+      // when /sdcard/DCIM/Camera is saved) so the selection is visible.
+      for (final path in p.paths) {
+        if (!activeVolume.containsPath(path)) continue;
+        var parent = AdbClient.dirname(path);
+        while (parent.length > activeRootPath.length &&
+            activeVolume.containsPath(parent)) {
+          unawaited(expand(parent));
+          parent = AdbClient.dirname(parent);
+        }
+      }
+    }
+
     _scheduleSelectionSize();
     log('Applied profile "${p.name}" (${p.paths.length} folders)');
     notifyListeners();
@@ -877,6 +1435,7 @@ class AppController extends ChangeNotifier {
       destination: destination.text.trim(),
       layout: layout,
       incremental: incremental,
+      rootPath: activeRootPath,
     );
     settings.profiles.removeWhere((x) => x.name == name);
     settings.profiles.add(p);

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'os.dart';
 import 'settings.dart';
 
 /// Starts/stops the AdbDrive WinFsp host (Phase 2 prototype) so the phone
@@ -13,15 +14,24 @@ class DriveManager extends ChangeNotifier {
   final void Function(String) log;
 
   Process? _proc;
+  String? _mountedRoot;
 
   DriveManager({required this.settings, required this.log});
 
   String get mountPoint => settings.driveMountPoint;
 
   bool get mounted => _proc != null;
-  bool get available => File(settings.driveExePath).existsSync();
+  String? get mountedRoot => _mountedRoot;
+  /// The drive host is built on WinFsp, so the feature is Windows-only.
+  static bool get supported => Platform.isWindows;
 
-  Future<void> mount(String serial, String adbPath) async {
+  bool get available => supported && File(settings.driveExePath).existsSync();
+
+  Future<void> mount(
+    String serial,
+    String adbPath, {
+    String rootPath = '/sdcard',
+  }) async {
     if (_proc != null) return;
     if (!available) {
       log('Explorer drive host not found (${settings.driveExePath}). '
@@ -29,7 +39,7 @@ class DriveManager extends ChangeNotifier {
       return;
     }
     // A killed host can't clean its pull cache; sweep it before mounting.
-    final stale = Directory('${Directory.systemTemp.path}\\AdbDrive');
+    final stale = Directory(localJoin(Directory.systemTemp.path, 'AdbDrive'));
     if (await stale.exists()) {
       await stale.delete(recursive: true).catchError((_) => stale);
     }
@@ -37,10 +47,12 @@ class DriveManager extends ChangeNotifier {
     final proc = await Process.start(settings.driveExePath, [
       '--serial', serial,
       '--mount', mountPoint,
+      '--root', rootPath,
       '--adb', adbPath,
       if (settings.driveWritable) '--writable',
     ]);
     _proc = proc;
+    _mountedRoot = rootPath;
     proc.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
@@ -51,6 +63,7 @@ class DriveManager extends ChangeNotifier {
         .listen((l) => log('[drive] $l'));
     unawaited(proc.exitCode.then((code) {
       _proc = null;
+      _mountedRoot = null;
       // A host that dies within seconds never really mounted — almost always a
       // missing prerequisite. Say so instead of a bare "exited with N".
       if (code != 0 && startedAt.elapsed < const Duration(seconds: 4)) {
@@ -61,9 +74,10 @@ class DriveManager extends ChangeNotifier {
       }
       notifyListeners();
     }));
+    final rootSuffix = rootPath == '/sdcard' ? '' : ' ($rootPath)';
     log(settings.driveWritable
-        ? 'Mounted $mountPoint WRITABLE — Explorer changes modify the phone!'
-        : 'Mounted $mountPoint — the phone is now visible in Explorer');
+        ? 'Mounted $mountPoint$rootSuffix WRITABLE — Explorer changes modify the phone!'
+        : 'Mounted $mountPoint$rootSuffix — the phone is now visible in Explorer');
     notifyListeners();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
@@ -6,16 +8,17 @@ import '../app_controller.dart';
 import '../backup_engine.dart';
 import '../disk_space.dart';
 import '../models.dart';
-import '../settings.dart';
-import 'dialogs.dart';
+import '../os.dart';
+import 'win_theme.dart';
 
-/// Explanatory captions are the quietest text in the app: you read them once
-/// and then want them out of the way, so they sit a step below the secondary
-/// colour the rest of the de-emphasised text uses.
+/// Explanatory captions helper retained for dialogs.dart compatibility.
 Color hintColor(BuildContext context) =>
     FluentTheme.of(context).resources.textFillColorTertiary;
 
-/// Destination + options + profiles + the backup queue.
+/// Right column of the 3-Bento-Card workspace:
+///   • Section 2 (top Bento card): Backup Destination, capacity bar, Mirror /
+///     Snapshot segmented control, Fluent ToggleSwitches, emerald CTA
+///   • Section 3 (bottom Bento card): Transfer Queue (or 3-step onboarding)
 class QueuePanel extends StatelessWidget {
   final AppController app;
 
@@ -25,337 +28,295 @@ class QueuePanel extends StatelessWidget {
     final dir = await FilePicker.getDirectoryPath(
       dialogTitle: 'Backup destination',
     );
-    if (dir != null) app.destination.text = dir;
-  }
-
-  Future<void> _saveProfileDialog(BuildContext context) async {
-    final l = AppLocalizations.of(context);
-    final name = TextEditingController(text: app.activeProfile?.name ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => ContentDialog(
-        title: Text(l.saveProfileTitle),
-        content: TextBox(
-          controller: name,
-          autofocus: true,
-          placeholder: l.profileNamePlaceholder,
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          Button(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, name.text),
-            child: Text(l.save),
-          ),
-        ],
-      ),
-    );
-    if (result != null && result.trim().isNotEmpty) {
-      app.saveProfile(result.trim());
-    }
+    if (dir != null) app.setDestination(dir);
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = WinPalette.of(context);
     final l = AppLocalizations.of(context);
     final selectedCount = app.checked.length;
-    final sectionCaption = FluentTheme.of(context).typography.caption?.copyWith(
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.5,
-      color: FluentTheme.of(context).resources.textFillColorPrimary,
-    );
-    // The whole panel scrolls: with the log pane open (or a short window)
-    // a rigid Column overflows.
+    final space = driveSpaceForPath(app.destination.text);
+    final missing = unmountedVolume(app.destination.text);
+    final selBytes = app.selectionBytes;
+    final tooBig =
+        space != null && selBytes != null && selBytes > space.freeBytes;
+
+    final spaceText = missing != null
+        ? l.driveNotConnected(missing)
+        : space != null
+            ? (tooBig
+                ? '${l.driveFree(fmtBytes(space.freeBytes), space.root)} · ${l.selectionMayNotFit}'
+                : l.driveFree(fmtBytes(space.freeBytes), space.root))
+            : null;
+    final spaceColor = (missing != null || tooBig) ? p.warnFg : p.accentSoftFg;
+
+    final canStart = selectedCount > 0 &&
+        app.destination.text.trim().isNotEmpty &&
+        app.selected != null &&
+        missing == null;
+
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.zero,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 2, bottom: 4),
-              child: Text(l.sectionProfile, style: sectionCaption),
-            ),
-            Card(
-              padding: const EdgeInsets.all(8),
-              child: Row(
+        // --- Section 2: Backup Destination Bento Card ---
+        WinBentoCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WinSectionLabel(
+                l.sectionBackup,
+                trailing: spaceText != null
+                    ? Flexible(
+                        child: Text(
+                          spaceText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: spaceColor,
+                            fontFeatures: winTabularFigures,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 10),
+              Row(
                 children: [
                   Expanded(
-                    // fluent_ui #combo_box crashes if an EMPTY popup opens
-                    // (clamp(0, negative) in _ComboBoxResizeClipper), so show
-                    // an inert placeholder until a profile exists.
-                    child: app.settings.profiles.isEmpty
-                        // readOnly (not disabled): disabled placeholder text
-                        // is too faint to read.
-                        ? TextBox(
-                            readOnly: true,
-                            placeholder: l.profilesPlaceholder,
-                            placeholderStyle: TextStyle(
-                              color: hintColor(context),
-                            ),
-                          )
-                        : ComboBox<Profile>(
-                            value: app.activeProfile,
-                            placeholder: Text(l.loadProfile),
-                            isExpanded: true,
-                            items: [
-                              for (final p in app.settings.profiles)
-                                ComboBoxItem(
-                                  value: p,
-                                  child: Text(
-                                    p.name,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                            ],
-                            onChanged: (p) =>
-                                p != null ? app.applyProfile(p) : null,
-                          ),
-                  ),
-                  Tooltip(
-                    message: l.saveProfileTooltip,
-                    child: IconButton(
-                      icon: const Icon(FluentIcons.save, size: 16),
-                      onPressed: selectedCount == 0
-                          ? null
-                          : () => _saveProfileDialog(context),
-                    ),
-                  ),
-                  Tooltip(
-                    message: app.activeProfile?.scheduleTime != null
-                        ? l.scheduledDailyEdit(app.activeProfile!.scheduleTime!)
-                        : l.scheduleProfileTooltip,
-                    child: IconButton(
-                      icon: Icon(
-                        FluentIcons.clock,
-                        size: 16,
-                        color: app.activeProfile?.scheduleTime != null
-                            ? Colors.green
-                            : null,
+                    child: TextBox(
+                      controller: app.destination,
+                      placeholder: Platform.isMacOS
+                          ? l.destinationPlaceholderMac
+                          : l.destinationPlaceholder,
+                      prefix: const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Icon(
+                          FluentIcons.folder_fill,
+                          size: 14,
+                          color: Color(0xFFF2B824),
+                        ),
                       ),
-                      onPressed: app.activeProfile == null
-                          ? null
-                          : () => showScheduleDialog(context, app),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Tooltip(
-                    message: l.deleteProfileTooltip,
-                    child: IconButton(
-                      icon: const Icon(FluentIcons.delete, size: 16),
-                      onPressed: app.activeProfile == null
-                          ? null
-                          : () => app.deleteProfile(app.activeProfile!),
+                    message: l.browseDestination,
+                    child: Button(
+                      onPressed: _browse,
+                      child: const Text('Browse…'),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.only(left: 2, bottom: 4),
-              child: Text(l.sectionBackup, style: sectionCaption),
-            ),
-            Card(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  InfoLabel(
-                    label: l.destination,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextBox(
-                            controller: app.destination,
-                            placeholder: l.destinationPlaceholder,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Tooltip(
-                          message: l.browseDestination,
-                          child: IconButton(
-                            icon: const Icon(
-                              FluentIcons.open_folder_horizontal,
-                              size: 16,
-                            ),
-                            onPressed: _browse,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _SpaceLine(app: app),
-                  const SizedBox(height: 8),
-                  Expander(
-                    initiallyExpanded: true,
-                    header: Text(l.options),
-                    content: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 130,
-                              child: ComboBox<BackupLayout>(
-                                value: app.layout,
-                                isExpanded: true,
-                                items: [
-                                  ComboBoxItem(
-                                    value: BackupLayout.mirror,
-                                    child: Text(l.layoutMirror),
-                                  ),
-                                  ComboBoxItem(
-                                    value: BackupLayout.snapshot,
-                                    child: Text(l.layoutSnapshot),
-                                  ),
-                                ],
-                                onChanged: (v) =>
-                                    v != null ? app.layout = v : null,
-                              ),
-                            ),
-                            Checkbox(
-                              checked: app.incremental,
-                              onChanged: (v) => app.incremental = v ?? true,
-                              content: Text(l.incremental),
-                            ),
-                            Tooltip(
-                              message: l.skipClutterTooltip(
-                                app.settings.clutterPatterns.join(', '),
-                              ),
-                              child: Checkbox(
-                                checked: app.skipClutter,
-                                onChanged: (v) => app.skipClutter = v ?? false,
-                                content: Text(l.skipClutter),
-                              ),
-                            ),
-                            Tooltip(
-                              message: l.verifyAfterBackupHint,
-                              child: Checkbox(
-                                checked: app.autoVerify,
-                                onChanged: (v) => app.autoVerify = v ?? false,
-                                content: Text(l.verifyAfterBackup),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          app.layout == BackupLayout.mirror
-                              ? l.mirrorHint
-                              : l.snapshotHint,
-                          style: FluentTheme.of(context).typography.caption
-                              ?.copyWith(color: hintColor(context)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton(
-                    onPressed:
-                        selectedCount == 0 ||
-                            app.destination.text.trim().isEmpty ||
-                            app.selected == null
-                        ? null
-                        : app.startBackup,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(FluentIcons.download, size: 16),
-                          const SizedBox(width: 6),
-                          Text(
-                            selectedCount == 0
-                                ? l.selectFoldersToBackUp
-                                : l.backUpItems(selectedCount),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              if (space != null && space.totalBytes > 0) ...[
+                const SizedBox(height: 10),
+                _WinCapacityBar(
+                  space: space,
+                  selectedBytes: selBytes ?? 0,
+                  tooBig: tooBig,
+                ),
+              ],
+              const SizedBox(height: 10),
+              WinSegmentedControl<BackupLayout>(
+                value: app.layout,
+                items: [
+                  (BackupLayout.mirror, l.layoutMirror),
+                  (BackupLayout.snapshot, l.layoutSnapshot),
                 ],
+                onChanged: (v) => app.layout = v,
               ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(l.sectionQueue, style: sectionCaption),
-                const Spacer(),
-                HyperlinkButton(
+              const SizedBox(height: 6),
+              Text(
+                app.layout == BackupLayout.mirror
+                    ? l.mirrorHint
+                    : l.snapshotHint,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: p.textSecondary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _OptionSwitchRow(
+                title: l.incremental,
+                checked: app.incremental,
+                onChanged: (v) => app.incremental = v,
+              ),
+              Tooltip(
+                message: l.skipClutterTooltip(
+                  app.settings.clutterPatterns.join(', '),
+                ),
+                child: _OptionSwitchRow(
+                  title: l.skipClutter,
+                  subtitle: app.settings.clutterPatterns.take(2).join(', '),
+                  checked: app.skipClutter,
+                  onChanged: (v) => app.skipClutter = v,
+                ),
+              ),
+              Tooltip(
+                message: l.verifyAfterBackupHint,
+                child: _OptionSwitchRow(
+                  title: l.verifyAfterBackup,
+                  checked: app.autoVerify,
+                  onChanged: (v) => app.autoVerify = v,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: canStart ? app.startBackup : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(FluentIcons.download, size: 15),
+                      const SizedBox(width: 7),
+                      Text(
+                        selectedCount == 0
+                            ? l.selectFoldersToBackUp
+                            : l.backUpItems(selectedCount),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // --- Section 3: Transfer Queue Bento Card ---
+        WinBentoCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WinSectionLabel(
+                l.sectionQueue,
+                trailing: HyperlinkButton(
                   onPressed: app.engine.jobs.any((j) => j.status.isTerminal)
                       ? app.engine.clearFinished
                       : null,
-                  child: Text(l.clearFinished),
+                  child: Text(
+                    l.clearFinished,
+                    style: const TextStyle(fontSize: 11.5),
+                  ),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 8),
+              if (app.engine.jobs.isEmpty)
+                _GettingStarted(app: app)
+              else
+                for (final job in app.engine.jobs)
+                  _JobTile(engine: app.engine, job: job),
+            ],
+          ),
         ),
-        if (app.engine.jobs.isEmpty)
-          _GettingStarted(app: app)
-        else
-          for (final job in app.engine.jobs)
-            _JobTile(engine: app.engine, job: job),
       ],
     );
   }
 }
 
-/// Free space on the destination drive and the measured size of the current
-/// selection — a quiet caption that turns amber when the selection may not fit.
-class _SpaceLine extends StatelessWidget {
-  final AppController app;
-  const _SpaceLine({required this.app});
+class _OptionSwitchRow extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool checked;
+  final ValueChanged<bool> onChanged;
+
+  const _OptionSwitchRow({
+    required this.title,
+    this.subtitle,
+    required this.checked,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final theme = FluentTheme.of(context);
-    final space = driveSpaceForPath(app.destination.text);
-    final sel = app.selectionBytes;
-
-    final parts = <String>[
-      if (space != null) l.driveFree(fmtBytes(space.freeBytes), space.root),
-      if (app.measuringSelection)
-        l.measuringSize
-      else if (sel != null && sel > 0)
-        l.selectedSize(fmtBytes(sel)),
-    ];
-    if (parts.isEmpty) return const SizedBox(height: 4);
-
-    final tooBig = space != null && sel != null && sel > space.freeBytes;
-    final color = tooBig ? Colors.orange : hintColor(context);
+    final p = WinPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 6, left: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          if (tooBig) ...[
-            Icon(FluentIcons.warning, size: 12, color: color),
-            const SizedBox(width: 4),
-          ],
           Expanded(
-            child: Text(
-              tooBig
-                  ? '${parts.join('  ·  ')}  ·  ${l.selectionMayNotFit}'
-                  : parts.join('  ·  '),
-              style: theme.typography.caption?.copyWith(color: color),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 12.5, color: p.textPrimary),
+                ),
+                if (subtitle != null && subtitle!.isNotEmpty)
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, color: p.textTertiary),
+                  ),
+              ],
             ),
           ),
+          const SizedBox(width: 8),
+          ToggleSwitch(checked: checked, onChanged: onChanged),
         ],
       ),
     );
   }
 }
 
-/// Onboarding checklist shown while the queue is empty; steps tick
-/// themselves off as the user completes them.
+class _WinCapacityBar extends StatelessWidget {
+  final DriveSpace space;
+  final int selectedBytes;
+  final bool tooBig;
+
+  const _WinCapacityBar({
+    required this.space,
+    required this.selectedBytes,
+    required this.tooBig,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = WinPalette.of(context);
+    final total = space.totalBytes.toDouble();
+    final usedFrac = ((space.totalBytes - space.freeBytes) / total).clamp(0.0, 1.0);
+    final selFrac = (selectedBytes / total).clamp(0.0, 1.0 - usedFrac);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 5,
+        child: LayoutBuilder(
+          builder: (_, c) => Stack(
+            children: [
+              Container(color: p.barTrack),
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: c.maxWidth * usedFrac,
+                child: Container(color: p.barUsed),
+              ),
+              if (selFrac > 0)
+                Positioned(
+                  left: c.maxWidth * usedFrac,
+                  top: 0,
+                  bottom: 0,
+                  width: (c.maxWidth * selFrac).clamp(3.0, c.maxWidth),
+                  child: Container(color: tooBig ? p.warnFg : p.accent),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Onboarding checklist shown while the queue is empty.
 class _GettingStarted extends StatelessWidget {
   final AppController app;
   const _GettingStarted({required this.app});
@@ -363,80 +324,77 @@ class _GettingStarted extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final theme = FluentTheme.of(context);
-    final secondary = theme.resources.textFillColorSecondary;
+    final p = WinPalette.of(context);
     final deviceOk = app.selected != null;
     final foldersOk = app.checked.isNotEmpty;
     final destOk = app.destination.text.trim().isNotEmpty;
 
     Widget step(int n, bool done, String text) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          done
-              ? Icon(
-                  FluentIcons.skype_circle_check,
-                  size: 16,
-                  color: Colors.green,
-                )
-              : Container(
-                  width: 18,
-                  height: 18,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: secondary),
-                  ),
-                  child: Text(
-                    '$n',
-                    style: theme.typography.caption?.copyWith(color: secondary),
+          padding: const EdgeInsets.symmetric(vertical: 4.5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              done
+                  ? Icon(
+                      FluentIcons.completed_solid,
+                      size: 16,
+                      color: p.accent,
+                    )
+                  : Container(
+                      width: 17,
+                      height: 17,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: p.textTertiary),
+                      ),
+                      child: Text(
+                        '$n',
+                        style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                      ),
+                    ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: done ? p.textSecondary : p.textPrimary,
                   ),
                 ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: done
-                  ? theme.typography.body?.copyWith(color: secondary)
-                  : theme.typography.body,
+              ),
+            ],
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l.backupIn3Steps,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: p.textPrimary,
             ),
           ),
+          const SizedBox(height: 8),
+          step(
+            1,
+            deviceOk,
+            deviceOk ? l.stepPhoneConnected : l.stepConnectPhone,
+          ),
+          step(2, foldersOk, l.stepTickFolders),
+          step(3, destOk, l.stepChooseDestination),
+          const SizedBox(height: 10),
+          Text(
+            Platform.isMacOS ? l.onboardingTipsMac : l.onboardingTips,
+            style: TextStyle(fontSize: 11, color: p.textTertiary, height: 1.4),
+          ),
         ],
-      ),
-    );
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Column(
-          // Lives inside the panel ListView now: must shrink-wrap, an
-          // unbounded-height Column with center alignment cannot lay out.
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 24),
-            Text(
-              l.backupIn3Steps,
-              style: theme.typography.bodyStrong,
-            ),
-            const SizedBox(height: 10),
-            step(
-              1,
-              deviceOk,
-              deviceOk ? l.stepPhoneConnected : l.stepConnectPhone,
-            ),
-            step(2, foldersOk, l.stepTickFolders),
-            step(3, destOk, l.stepChooseDestination),
-            const SizedBox(height: 16),
-            Text(
-              l.onboardingTips,
-              style: theme.typography.caption?.copyWith(
-                color: hintColor(context),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -454,219 +412,226 @@ class _JobTile extends StatelessWidget {
       listenable: job,
       builder: (context, _) {
         final l = AppLocalizations.of(context);
-        final theme = FluentTheme.of(context);
-        final secondary = theme.resources.textFillColorSecondary;
+        final p = WinPalette.of(context);
         final active = job.status == JobStatus.running;
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Card(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    if (job.isRestore)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 4),
-                        child: Icon(FluentIcons.upload, size: 12),
-                      ),
-                    Expanded(
-                      child: Text(
-                        job.isRestore
-                            ? '${job.localSource} → ${job.source.path}'
-                            : job.source.path,
-                        overflow: TextOverflow.ellipsis,
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            color: p.cardSubBg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: active ? p.accentBorder : p.border,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (job.isRestore)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 5),
+                      child: Icon(
+                        FluentIcons.upload,
+                        size: 12,
+                        color: p.textSecondary,
                       ),
                     ),
-                    _StatusChip(status: job.status, paused: job.paused),
-                    if (job.canPause || job.paused)
-                      Tooltip(
-                        message: job.paused ? l.resume : l.pause,
-                        child: IconButton(
-                          icon: Icon(
-                            job.paused ? FluentIcons.play : FluentIcons.pause,
-                            size: 12,
-                          ),
-                          onPressed: job.paused ? job.resume : job.pause,
-                        ),
-                      ),
-                    if (!job.status.isTerminal)
-                      Tooltip(
-                        message: l.cancelJob,
-                        child: IconButton(
-                          icon: const Icon(FluentIcons.chrome_close, size: 12),
-                          onPressed: job.cancel,
-                        ),
-                      ),
-                    if (job.status == JobStatus.failed ||
-                        job.status == JobStatus.cancelled)
-                      Tooltip(
-                        message: l.retry,
-                        child: IconButton(
-                          icon: const Icon(FluentIcons.refresh, size: 12),
-                          onPressed: () => engine.retry(job),
-                        ),
-                      ),
-                    if (!job.isRestore &&
-                        (job.status == JobStatus.done ||
-                            job.status == JobStatus.doneWithWarnings))
-                      Tooltip(
-                        message: job.deepVerified
-                            ? l.verifiedTooltip
-                            : l.deepVerifyTooltip,
-                        child: IconButton(
-                          icon: Icon(
-                            FluentIcons.verified_brand,
-                            size: 12,
-                            color: job.deepVerified ? Colors.green : null,
-                          ),
-                          onPressed: () => engine.deepVerify(job),
-                        ),
-                      ),
-                  ],
-                ),
-                if (active || job.status == JobStatus.verifying) ...[
-                  const SizedBox(height: 6),
-                  ProgressBar(
-                    // Verify shows file-by-file progress (device hashing, then
-                    // local checking); the transfer shows byte progress.
-                    value: job.deviceFileCount > 0 && job.verifiedFiles > 0
-                        ? job.verifiedFiles / job.deviceFileCount * 100
-                        : job.deviceFileCount > 0 && job.hashedFiles > 0
-                        ? job.hashedFiles / job.deviceFileCount * 100
-                        : (active ? job.progress * 100 : null),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    active
-                        // Transfer: byte/file progress.
-                        ? [
-                            '${fmtBytes(job.doneBytes)} / ${fmtBytes(job.totalBytes)}',
-                            fmtSpeed(job.bytesPerSec),
-                            if (fmtEta(job.etaSeconds).isNotEmpty)
-                              l.etaLabel(fmtEta(job.etaSeconds)),
-                            // Count against the files actually being copied
-                            // (total minus skipped), not the whole device —
-                            // otherwise an incremental run looks stuck at e.g.
-                            // 0/775 when it only has 14 to copy.
-                            if (job.deviceFileCount - job.skippedFiles > 0)
-                              l.filesProgress(
-                                job.filesStreamed,
-                                job.deviceFileCount - job.skippedFiles,
-                              ),
-                            if (job.skippedFiles > 0)
-                              l.filesSkipped(job.skippedFiles),
-                            if (job.ignoredFiles > 0)
-                              l.filesIgnored(job.ignoredFiles),
-                          ].join(' · ')
-                        // Verifying: hashing on the device, then checking each
-                        // local file; "Preparing…" only until the first count.
-                        : job.verifiedFiles > 0
-                        ? [
-                            l.verifyingMd5(
-                              job.verifiedFiles,
-                              job.deviceFileCount,
-                            ),
-                            if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
-                              l.etaLabel(fmtEta(job.verifyEtaSeconds)),
-                          ].join(' · ')
-                        : job.hashedFiles > 0
-                        ? [
-                            l.hashingOnDevice(
-                              job.hashedFiles,
-                              job.deviceFileCount > 0
-                                  ? job.deviceFileCount
-                                  : '?',
-                            ),
-                            if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
-                              l.etaLabel(fmtEta(job.verifyEtaSeconds)),
-                          ].join(' · ')
-                        : job.linkedFiles > 0
-                        ? l.linkingUnchanged(job.linkedFiles)
-                        : l.preparingEllipsis,
-                    style: theme.typography.caption,
-                  ),
-                  if ((active || job.status == JobStatus.verifying) &&
-                      job.currentFile != null)
-                    Text(
-                      job.currentFile!,
-                      maxLines: 1,
+                  Expanded(
+                    child: Text(
+                      job.isRestore
+                          ? '${job.localSource} → ${job.source.path}'
+                          : job.source.path,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.typography.caption?.copyWith(
-                        color: secondary,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: p.textPrimary,
+                      ),
+                    ),
+                  ),
+                  _StatusChip(status: job.status, paused: job.paused),
+                  if (job.canPause || job.paused)
+                    Tooltip(
+                      message: job.paused ? l.resume : l.pause,
+                      child: IconButton(
+                        icon: Icon(
+                          job.paused ? FluentIcons.play : FluentIcons.pause,
+                          size: 12,
+                        ),
+                        onPressed: job.paused ? job.resume : job.pause,
+                      ),
+                    ),
+                  if (!job.status.isTerminal)
+                    Tooltip(
+                      message: l.cancelJob,
+                      child: IconButton(
+                        icon: const Icon(FluentIcons.chrome_close, size: 12),
+                        onPressed: job.cancel,
+                      ),
+                    ),
+                  if (job.status == JobStatus.failed ||
+                      job.status == JobStatus.cancelled)
+                    Tooltip(
+                      message: l.retry,
+                      child: IconButton(
+                        icon: const Icon(FluentIcons.refresh, size: 12),
+                        onPressed: () => engine.retry(job),
+                      ),
+                    ),
+                  if (!job.isRestore &&
+                      (job.status == JobStatus.done ||
+                          job.status == JobStatus.doneWithWarnings))
+                    Tooltip(
+                      message: job.deepVerified
+                          ? l.verifiedTooltip
+                          : l.deepVerifyTooltip,
+                      child: IconButton(
+                        icon: Icon(
+                          FluentIcons.verified_brand,
+                          size: 13,
+                          color: job.deepVerified ? p.accent : null,
+                        ),
+                        onPressed: () => engine.deepVerify(job),
                       ),
                     ),
                 ],
-                if (job.status == JobStatus.done ||
-                    job.status == JobStatus.doneWithWarnings)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      [
-                        // Restore (adb push) doesn't track a file count, so
-                        // only fold it in when we have one.
-                        if (job.filesStreamed > 0)
-                          l.transferredFiles(
-                            job.filesStreamed,
-                            fmtBytes(job.doneBytes),
-                          )
-                        else
-                          l.transferredBytes(fmtBytes(job.doneBytes)),
-                        if (job.skippedFiles > 0)
-                          l.unchangedSkipped(job.skippedFiles),
-                        if (job.ignoredFiles > 0)
-                          l.filesIgnored(job.ignoredFiles),
-                        if (job.linkedFiles > 0)
-                          l.hardlinked(job.linkedFiles),
-                      ].join(' · '),
-                      style: theme.typography.caption?.copyWith(
-                        color: secondary,
-                      ),
-                    ),
+              ),
+              if (active || job.status == JobStatus.verifying) ...[
+                const SizedBox(height: 7),
+                ProgressBar(
+                  value: job.deviceFileCount > 0 && job.verifiedFiles > 0
+                      ? job.verifiedFiles / job.deviceFileCount * 100
+                      : job.deviceFileCount > 0 && job.hashedFiles > 0
+                          ? job.hashedFiles / job.deviceFileCount * 100
+                          : (active ? job.progress * 100 : null),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  active
+                      ? [
+                          '${fmtBytes(job.doneBytes)} / ${fmtBytes(job.totalBytes)}',
+                          fmtSpeed(job.bytesPerSec),
+                          if (fmtEta(job.etaSeconds).isNotEmpty)
+                            l.etaLabel(fmtEta(job.etaSeconds)),
+                          if (job.deviceFileCount - job.skippedFiles > 0)
+                            l.filesProgress(
+                              job.filesStreamed,
+                              job.deviceFileCount - job.skippedFiles,
+                            ),
+                          if (job.skippedFiles > 0)
+                            l.filesSkipped(job.skippedFiles),
+                          if (job.ignoredFiles > 0)
+                            l.filesIgnored(job.ignoredFiles),
+                        ].join(' · ')
+                      : job.verifiedFiles > 0
+                          ? [
+                              l.verifyingMd5(
+                                job.verifiedFiles,
+                                job.deviceFileCount,
+                              ),
+                              if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
+                                l.etaLabel(fmtEta(job.verifyEtaSeconds)),
+                            ].join(' · ')
+                          : job.hashedFiles > 0
+                              ? [
+                                  l.hashingOnDevice(
+                                    job.hashedFiles,
+                                    job.deviceFileCount > 0
+                                        ? job.deviceFileCount
+                                        : '?',
+                                  ),
+                                  if (fmtEta(job.verifyEtaSeconds).isNotEmpty)
+                                    l.etaLabel(fmtEta(job.verifyEtaSeconds)),
+                                ].join(' · ')
+                              : job.linkedFiles > 0
+                                  ? l.linkingUnchanged(job.linkedFiles)
+                                  : l.preparingEllipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: p.textSecondary,
+                    fontFeatures: winTabularFigures,
                   ),
-                if (job.deepVerified)
+                ),
+                if (job.currentFile != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        Icon(
-                          FluentIcons.completed_solid,
-                          size: 12,
-                          color: Colors.green,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          l.verifiedAllMatch,
-                          style: theme.typography.caption?.copyWith(
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (job.error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      job.error!,
-                      style: theme.typography.caption?.copyWith(
-                        color: Colors.red,
-                      ),
-                    ),
-                  ),
-                if (job.warnings.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      job.warnings.join('\n'),
-                      style: theme.typography.caption?.copyWith(
-                        color: Colors.orange,
+                      job.currentFile!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontFamily: winMonoFont,
+                        color: p.textTertiary,
                       ),
                     ),
                   ),
               ],
-            ),
+              if (job.status == JobStatus.done ||
+                  job.status == JobStatus.doneWithWarnings)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    [
+                      if (job.filesStreamed > 0)
+                        l.transferredFiles(
+                          job.filesStreamed,
+                          fmtBytes(job.doneBytes),
+                        )
+                      else
+                        l.transferredBytes(fmtBytes(job.doneBytes)),
+                      if (job.skippedFiles > 0)
+                        l.unchangedSkipped(job.skippedFiles),
+                      if (job.ignoredFiles > 0)
+                        l.filesIgnored(job.ignoredFiles),
+                      if (job.linkedFiles > 0)
+                        l.hardlinked(job.linkedFiles),
+                    ].join(' · '),
+                    style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+                  ),
+                ),
+              if (job.deepVerified)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        FluentIcons.completed_solid,
+                        size: 12,
+                        color: p.accent,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        l.verifiedAllMatch,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: p.accentSoftFg,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (job.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    job.error!,
+                    style: TextStyle(fontSize: 11.5, color: p.red),
+                  ),
+                ),
+              if (job.warnings.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    job.warnings.join('\n'),
+                    style: TextStyle(fontSize: 11.5, color: p.warnFg),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -682,14 +647,15 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final Color color = paused
-        ? Colors.grey[80]
+    final p = WinPalette.of(context);
+    final (Color fg, Color bg) = paused
+        ? (p.neutralPillFg, p.neutralPillBg)
         : switch (status) {
-            JobStatus.done => Colors.green,
-            JobStatus.doneWithWarnings => Colors.orange,
-            JobStatus.failed => Colors.red,
-            JobStatus.cancelled => Colors.grey[80],
-            _ => FluentTheme.of(context).accentColor,
+            JobStatus.done => (p.accentSoftFg, p.accentSoft),
+            JobStatus.doneWithWarnings => (p.warnFg, p.warnBg),
+            JobStatus.failed => (p.red, p.redSoft),
+            JobStatus.cancelled => (p.neutralPillFg, p.neutralPillBg),
+            _ => (p.accentSoftFg, p.accentSoft),
           };
     final label = switch (status) {
       JobStatus.queued => l.statusQueued,
@@ -701,18 +667,12 @@ class _StatusChip extends StatelessWidget {
       JobStatus.failed => l.statusFailed,
       JobStatus.cancelled => l.statusCancelled,
     };
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        paused ? l.statusPaused : label,
-        style: FluentTheme.of(
-          context,
-        ).typography.caption?.copyWith(color: color),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: WinPill(
+        label: paused ? l.statusPaused : label,
+        color: fg,
+        background: bg,
       ),
     );
   }

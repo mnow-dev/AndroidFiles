@@ -8,7 +8,8 @@ import 'dart:typed_data';
 /// Replaces Windows' bundled bsdtar, which interprets the UTF-8 names in
 /// toybox's ustar headers using the ANSI codepage and mangles non-ASCII
 /// filenames. Extracting natively also lets us restore mtimes exactly
-/// (incremental compares depend on them) and reject path traversal.
+/// (incremental compares depend on them) and reject path traversal, and it
+/// behaves the same on every desktop platform.
 class TarExtractor {
   final String destDir;
 
@@ -123,7 +124,7 @@ class TarExtractor {
       warnings.add('Skipped suspicious path in archive: $rawName');
       return; // payload gets skipped (_out and _capture are null)
     }
-    final abs = '$destDir\\$rel';
+    final abs = '$destDir${Platform.pathSeparator}$rel';
 
     if (type == 0x35 /* '5' directory */) {
       await _ensureDir(Directory(abs));
@@ -139,7 +140,8 @@ class TarExtractor {
       if (size == 0) await _finishEntry();
       return;
     }
-    // Symlinks/hardlinks/devices don't map onto a Windows backup copy.
+    // Symlinks/hardlinks/devices aren't backed up as such (and can't be
+    // trusted to point anywhere sensible on this machine).
     warnings.add(
         "Skipped entry type '${String.fromCharCode(type)}' in archive: $rawName");
   }
@@ -212,17 +214,24 @@ class TarExtractor {
     }
   }
 
-  /// Windows-relative safe path, or null if the entry must not be written.
+  /// Safe path relative to the destination, using this platform's
+  /// separator, or null if the entry must not be written.
   static String? _sanitize(String name) {
-    var n = name.replaceAll('\\', '/');
+    // On Windows a backslash is a separator (so it can smuggle in '..'), and
+    // ':' names a drive or an alternate data stream. On macOS/Linux both are
+    // ordinary filename characters that the phone may legitimately use.
+    final windows = Platform.isWindows;
+    var n = windows ? name.replaceAll('\\', '/') : name;
     while (n.startsWith('./')) {
       n = n.substring(2);
     }
     if (n.endsWith('/')) n = n.substring(0, n.length - 1);
-    if (n.isEmpty || n.startsWith('/') || n.contains(':')) return null;
+    if (n.isEmpty || n.startsWith('/') || (windows && n.contains(':'))) {
+      return null;
+    }
     final segments = n.split('/');
     if (segments.any((s) => s == '..' || s == '.' || s.isEmpty)) return null;
-    return segments.join('\\');
+    return segments.join(Platform.pathSeparator);
   }
 
   static int _num(Uint8List h, int off, int len) {

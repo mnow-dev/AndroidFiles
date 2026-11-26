@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'manifest.dart';
 import 'models.dart';
+import 'os.dart';
 
 /// Thin wrapper around the adb CLI.
 class AdbClient {
@@ -61,6 +62,24 @@ class AdbClient {
       devices.add(AdbDevice(serial: parts[0], state: parts[1], model: model));
     }
     return devices;
+  }
+
+  /// Hardware serial (`ro.serialno`) for [serial], used to recognize when two
+  /// wireless ADB transports (e.g. `192.168.0.116:36687` and
+  /// `adb-<hw>-<id>._adb-tls-connect._tcp`) refer to the exact same phone.
+  Future<String?> hardwareSerial(String serial) async {
+    try {
+      final r = await _shell(
+        serial,
+        'getprop ro.serialno',
+        timeout: const Duration(seconds: 5),
+      );
+      if (r.exitCode != 0) return null;
+      final s = (r.stdout as String).trim();
+      return s.isEmpty ? null : s;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// List a directory using toybox ls (stable output format on Android 6+).
@@ -146,8 +165,8 @@ class AdbClient {
 
   /// Push [lines] to a temp file on the device; returns its device path.
   Future<String> pushLines(String serial, List<String> lines) async {
-    final local = File(
-        '${Directory.systemTemp.path}\\af_list_${DateTime.now().microsecondsSinceEpoch}.txt');
+    final local = File(localJoin(Directory.systemTemp.path,
+        'af_list_${DateTime.now().microsecondsSinceEpoch}.txt'));
     await local.writeAsString(lines.join('\n'), flush: true);
     final devicePath =
         '/data/local/tmp/androidfiles_${DateTime.now().millisecondsSinceEpoch}.txt';
@@ -163,8 +182,205 @@ class AdbClient {
     return devicePath;
   }
 
+  /// Remove a single device file (used for temp files).
   Future<void> remove(String serial, String devicePath) async {
     await _shell(serial, 'rm -f ${shellQuote(devicePath)}');
+  }
+
+  /// Device storage totals (total/used/free bytes) for [path] via `df -k`.
+  Future<({int totalBytes, int usedBytes, int freeBytes})?> storageSpace(
+    String serial,
+    String path,
+  ) async {
+    final target = path.endsWith('/') ? path : '$path/';
+    final r = await _shell(serial, 'df -k ${shellQuote(target)}');
+    if (r.exitCode != 0) return null;
+    final lines = const LineSplitter()
+        .convert(r.stdout as String)
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (lines.length < 2) return null;
+    // Standard toybox `df -k`: Filesystem 1K-blocks Used Available Use% Mounted
+    final parts = lines.last.split(RegExp(r'\s+'));
+    if (parts.length < 4) return null;
+    final totalKb = int.tryParse(parts[1]);
+    final usedKb = int.tryParse(parts[2]);
+    final availKb = int.tryParse(parts[3]);
+    if (totalKb == null || usedKb == null || availKb == null) return null;
+    return (
+      totalBytes: totalKb * 1024,
+      usedBytes: usedKb * 1024,
+      freeBytes: availKb * 1024,
+    );
+  }
+
+  /// Fast single-pass scan of user files under [rootPath] (e.g. `/sdcard`).
+  /// Uses a trailing slash so symlinked `/sdcard` is traversed, prunes
+  /// restricted `Android/data` and `Android/obb` subtrees, and tolerates
+  /// partial permission warnings as long as stdout yields entries.
+  Future<Map<String, FileMeta>> scanStorage(
+    String serial,
+    String rootPath,
+  ) async {
+    final root = rootPath.endsWith('/')
+        ? rootPath.substring(0, rootPath.length - 1)
+        : rootPath;
+    final cmd =
+        "find ${shellQuote('$root/')} "
+        "\\( -path ${shellQuote('$root/Android/data')} "
+        "-o -path ${shellQuote('$root/Android/obb')} \\) -prune "
+        "-o -type f -exec stat -c '%s|%Y|%n' {} + 2>/dev/null";
+    final r = await _shell(serial, cmd, timeout: const Duration(minutes: 5));
+    final stdout = r.stdout as String;
+    if (r.exitCode != 0 && stdout.trim().isEmpty) {
+      throw AdbException('Storage scan failed: ${r.stderr}'.trim());
+    }
+    return parseDeviceManifest(stdout, root);
+  }
+
+  /// Hash an explicit list of absolute device paths via batched `md5sum`.
+  /// Returns `{absPath -> lowercase hex md5}`.
+  Future<Map<String, String>> md5Files(
+    String serial,
+    List<String> absPaths, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final out = <String, String>{};
+    if (absPaths.isEmpty) return out;
+    final re = RegExp(r'^([0-9a-fA-F]{32})\s+(.+)$');
+    const chunkSize = 50;
+    var done = 0;
+    for (var i = 0; i < absPaths.length; i += chunkSize) {
+      final end = (i + chunkSize).clamp(0, absPaths.length);
+      final batch = absPaths.sublist(i, end);
+      final args = batch.map(shellQuote).join(' ');
+      final r = await _shell(
+        serial,
+        'md5sum $args 2>/dev/null',
+        timeout: const Duration(minutes: 5),
+      );
+      for (final line in const LineSplitter().convert(r.stdout as String)) {
+        final m = re.firstMatch(line);
+        if (m != null) {
+          out[m.group(2)!] = m.group(1)!.toLowerCase();
+        }
+      }
+      done = end;
+      onProgress?.call(done, absPaths.length);
+    }
+    return out;
+  }
+
+  /// Discover browsable storage roots on the device: always includes internal
+  /// storage (`/sdcard`), plus any mounted readable external microSD / USB
+  /// volumes under `/storage/<UUID>`.
+  Future<List<StorageVolume>> storageVolumes(String serial) async {
+    try {
+      // Single shell round-trip: enumerate /storage/*, skip Android's virtual
+      // internal symlinks (`emulated`, `self`, etc.), and keep only readable
+      // mounted directories.
+      const cmd = 'for d in /storage/*; do '
+          'n="\${d##*/}"; '
+          'case "\$n" in emulated|self|enc_emulated|knox-emulated|isolated|\'*\') continue ;; esac; '
+          '[ -d "\$d" ] && ls "\$d/" >/dev/null 2>&1 && printf \'%s\\n\' "\$d"; '
+          'done';
+      final r = await _shell(serial, cmd, timeout: const Duration(seconds: 10));
+      return parseStorageVolumes(r.stdout as String);
+    } catch (_) {
+      return const [StorageVolume.internal];
+    }
+  }
+
+  /// Parse newline-separated external mount paths (from `/storage/*`) into a
+  /// deduplicated list starting with [StorageVolume.internal].
+  static List<StorageVolume> parseStorageVolumes(String rawPaths) {
+    final volumes = <StorageVolume>[StorageVolume.internal];
+    final seen = <String>{StorageVolume.internal.path};
+    final externalPaths = <String>[];
+    for (final line in const LineSplitter().convert(rawPaths)) {
+      var p = line.trim();
+      while (p.length > 1 && p.endsWith('/')) {
+        p = p.substring(0, p.length - 1);
+      }
+      final id = externalStorageId(p);
+      if (id == null) continue;
+      final canonical = '/storage/$id';
+      if (seen.add(canonical)) {
+        externalPaths.add(canonical);
+      }
+    }
+    externalPaths.sort();
+    for (final p in externalPaths) {
+      final id = externalStorageId(p)!;
+      volumes.add(StorageVolume(
+        path: p,
+        label: 'SD card ($id)',
+        isExternal: true,
+      ));
+    }
+    return volumes;
+  }
+
+  /// Safety fence for on-device file deletion: permits regular user paths
+  /// strictly inside `/sdcard/` or a mounted external `/storage/<UUID>/`
+  /// volume, and rejects traversal (`..`), root paths, or system directories.
+  static bool isSafeUserStoragePath(String path) {
+    if (path.contains('/../') || path.endsWith('/..') || path.endsWith('/')) {
+      return false;
+    }
+    if (path.startsWith('/sdcard/') && path.length > '/sdcard/'.length) {
+      return true;
+    }
+    final extId = externalStorageId(path);
+    if (extId != null) {
+      final prefix = '/storage/$extId/';
+      return path.startsWith(prefix) && path.length > prefix.length;
+    }
+    return false;
+  }
+
+  /// Safely delete verified user files under `/sdcard/` or an external
+  /// `/storage/<UUID>/` volume. Returns paths that failed to delete (empty
+  /// list = all removed cleanly).
+  Future<List<String>> deleteDeviceFiles(
+    String serial,
+    List<String> absPaths, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final failed = <String>[];
+    if (absPaths.isEmpty) return failed;
+    // Safety fence: refuse any path outside user storage or with path traversal.
+    final safe = <String>[];
+    for (final p in absPaths) {
+      if (!isSafeUserStoragePath(p)) {
+        failed.add(p);
+      } else {
+        safe.add(p);
+      }
+    }
+    const chunkSize = 40;
+    var done = 0;
+    for (var i = 0; i < safe.length; i += chunkSize) {
+      final end = (i + chunkSize).clamp(0, safe.length);
+      final batch = safe.sublist(i, end);
+      final args = batch.map(shellQuote).join(' ');
+      final r = await _shell(
+        serial,
+        'rm -f -- $args',
+        timeout: const Duration(minutes: 2),
+      );
+      if (r.exitCode != 0) {
+        // Fall back to per-file removal to pinpoint any failures.
+        for (final p in batch) {
+          final single = await _shell(serial, 'rm -f -- ${shellQuote(p)}');
+          if (single.exitCode != 0) failed.add(p);
+        }
+      }
+      done = end;
+      onProgress?.call(done, safe.length);
+    }
+    return failed;
   }
 
   /// Tar only the files listed (one relative path per line) in the device
@@ -222,22 +438,168 @@ class AdbClient {
     return parseMd5Manifest(out.toString(), dirname(path));
   }
 
-  /// Wireless devices discovered via mDNS (`adb mdns services`).
-  /// `_adb-tls-pairing` = phone showing a pairing screen;
-  /// `_adb-tls-connect` = paired phone ready for `adb connect`.
+  /// Wireless devices discovered via mDNS (`adb mdns services`, augmented on
+  /// macOS by native Bonjour `dns-sd`).
+  ///
+  /// ADB's Openscreen mDNS backend on macOS frequently wedges after sleep or
+  /// network changes and misses `_adb-tls-connect._tcp` services even while
+  /// macOS's `mDNSResponder` sees them immediately. Merging `dns-sd` results
+  /// makes QR pairing, manual discovery, and auto-reconnect reliable on macOS.
   Future<List<MdnsService>> mdnsServices() async {
-    final r = await _run(['mdns', 'services'], timeout: const Duration(seconds: 10));
-    final out = <MdnsService>[];
-    for (final line in const LineSplitter().convert(r.stdout as String)) {
-      final parts = line.trim().split(RegExp(r'\s+'));
-      if (parts.length < 3 || !parts[1].startsWith('_adb-tls-')) continue;
-      out.add(MdnsService(
-        instance: parts[0],
-        type: parts[1].replaceAll(RegExp(r'\.$'), ''),
-        address: parts[2],
-      ));
+    final adbFuture = _adbMdnsServices();
+    final bonjourFuture =
+        Platform.isMacOS ? _bonjourMdnsServices() : Future.value(const <MdnsService>[]);
+    final results = await Future.wait([adbFuture, bonjourFuture]);
+
+    // Deduplicate by (instance, type), preferring IPv4 addresses when both
+    // backends report the same service.
+    final byKey = <String, MdnsService>{};
+    for (final list in results) {
+      for (final s in list) {
+        final key = '${s.instance}|${s.type}';
+        final existing = byKey[key];
+        if (existing == null || (!existing.isIpv4 && s.isIpv4)) {
+          byKey[key] = s;
+        }
+      }
     }
-    return out;
+    return byKey.values.toList();
+  }
+
+  Future<List<MdnsService>> _adbMdnsServices() async {
+    try {
+      final r = await _run(['mdns', 'services'], timeout: const Duration(seconds: 10));
+      final out = <MdnsService>[];
+      for (final line in const LineSplitter().convert(r.stdout as String)) {
+        final parts = line.trim().split(RegExp(r'\s+'));
+        if (parts.length < 3 || !parts[1].startsWith('_adb-tls-')) continue;
+        out.add(MdnsService(
+          instance: parts[0],
+          type: parts[1].replaceAll(RegExp(r'\.$'), ''),
+          address: parts[2],
+        ));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<MdnsService>> _bonjourMdnsServices() async {
+    const types = ['_adb-tls-pairing._tcp', '_adb-tls-connect._tcp'];
+    final browsed = await Future.wait([
+      for (final t in types) _bonjourBrowse(t),
+    ]);
+    final lookupFutures = <Future<MdnsService?>>[];
+    for (var i = 0; i < types.length; i++) {
+      for (final instance in browsed[i]) {
+        lookupFutures.add(_bonjourLookup(instance, types[i]));
+      }
+    }
+    if (lookupFutures.isEmpty) return const [];
+    final resolved = await Future.wait(lookupFutures);
+    return [for (final s in resolved) ?s];
+  }
+
+  /// Browse Bonjour for [serviceType] briefly (~400ms) and return active
+  /// instance names.
+  Future<Set<String>> _bonjourBrowse(String serviceType) async {
+    final active = <String>{};
+    Process? proc;
+    try {
+      proc = await Process.start('dns-sd', ['-B', serviceType, 'local.']);
+      final sub = proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        final parsed = parseBonjourBrowseLine(line);
+        if (parsed == null) return;
+        if (parsed.added) {
+          active.add(parsed.instance);
+        } else {
+          active.remove(parsed.instance);
+        }
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      proc.kill();
+      await sub.cancel();
+    } catch (_) {
+      proc?.kill();
+    }
+    return active;
+  }
+
+  /// Resolve a single Bonjour instance to an `ip:port` [MdnsService].
+  Future<MdnsService?> _bonjourLookup(String instance, String serviceType) async {
+    Process? proc;
+    try {
+      proc = await Process.start('dns-sd', ['-L', instance, serviceType, 'local.']);
+      final completer = Completer<(String, String)?>();
+      final sub = proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        final target = parseBonjourLookupLine(line);
+        if (target != null && !completer.isCompleted) {
+          completer.complete(target);
+        }
+      });
+      final target = await completer.future.timeout(
+        const Duration(milliseconds: 1200),
+        onTimeout: () => null,
+      );
+      proc.kill();
+      await sub.cancel();
+      if (target == null) return null;
+
+      final (rawHost, port) = target;
+      final host = rawHost.endsWith('.')
+          ? rawHost.substring(0, rawHost.length - 1)
+          : rawHost;
+      String? resolvedAddr;
+      try {
+        final v4 = await InternetAddress.lookup(
+          host,
+          type: InternetAddressType.IPv4,
+        ).timeout(const Duration(seconds: 2));
+        if (v4.isNotEmpty) resolvedAddr = '${v4.first.address}:$port';
+      } catch (_) {}
+      if (resolvedAddr == null) {
+        try {
+          final any = await InternetAddress.lookup(host)
+              .timeout(const Duration(seconds: 2));
+          if (any.isNotEmpty) {
+            final a = any.first;
+            resolvedAddr = a.type == InternetAddressType.IPv6
+                ? '[${a.address}]:$port'
+                : '${a.address}:$port';
+          }
+        } catch (_) {}
+      }
+      if (resolvedAddr == null) return null;
+      return MdnsService(
+        instance: instance,
+        type: serviceType,
+        address: resolvedAddr,
+      );
+    } catch (_) {
+      proc?.kill();
+      return null;
+    }
+  }
+
+  static ({bool added, String instance})? parseBonjourBrowseLine(String line) {
+    final m = RegExp(
+      r'^\S+\s+(Add|Rmv)\s+\d+\s+\d+\s+\S+\s+\S+\s+(.+?)\s*$',
+    ).firstMatch(line.trim());
+    if (m == null) return null;
+    return (added: m.group(1) == 'Add', instance: m.group(2)!);
+  }
+
+  static (String, String)? parseBonjourLookupLine(String line) {
+    final m = RegExp(r'can be reached at\s+(\S+):(\d+)\b').firstMatch(line);
+    if (m == null) return null;
+    return (m.group(1)!, m.group(2)!);
   }
 
   /// Pair with a device over Wi-Fi (Android 11+ pairing dialog).
@@ -288,7 +650,19 @@ class MdnsService {
 
   bool get isPairing => type.startsWith('_adb-tls-pairing');
   bool get isConnect => type.startsWith('_adb-tls-connect');
-  String get ip => address.split(':').first;
+
+  /// Host portion of [address], handling both IPv4 (`192.168.1.2:5555`) and
+  /// bracketed IPv6 (`[fe80::1]:5555`).
+  String get ip {
+    final colon = address.lastIndexOf(':');
+    final host = colon == -1 ? address : address.substring(0, colon);
+    if (host.startsWith('[') && host.endsWith(']')) {
+      return host.substring(1, host.length - 1);
+    }
+    return host;
+  }
+
+  bool get isIpv4 => !ip.contains(':');
 }
 
 class AdbException implements Exception {

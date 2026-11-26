@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'adb_installer.dart';
 import 'manifest.dart';
 import 'models.dart';
+import 'os.dart';
 
 /// A saved backup configuration for one-click re-runs.
 class Profile {
@@ -16,6 +18,10 @@ class Profile {
   /// schtasks is the source of truth).
   String? scheduleTime;
 
+  /// Storage root path active when the profile was saved (e.g. `/sdcard` or
+  /// `/storage/1A2B-3C4D`). Null defaults to `/sdcard` for older profiles.
+  String? rootPath;
+
   Profile({
     required this.name,
     required this.paths,
@@ -23,6 +29,7 @@ class Profile {
     this.layout = BackupLayout.mirror,
     this.incremental = true,
     this.scheduleTime,
+    this.rootPath,
   });
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +39,7 @@ class Profile {
         'layout': layout.name,
         'incremental': incremental,
         if (scheduleTime != null) 'scheduleTime': scheduleTime,
+        if (rootPath != null && rootPath != '/sdcard') 'rootPath': rootPath,
       };
 
   static Profile fromJson(Map<String, dynamic> j) => Profile(
@@ -41,10 +49,12 @@ class Profile {
         layout: BackupLayout.values.asNameMap()[j['layout']] ?? BackupLayout.mirror,
         incremental: j['incremental'] as bool? ?? true,
         scheduleTime: j['scheduleTime'] as String?,
+        rootPath: j['rootPath'] as String?,
       );
 }
 
-/// Tiny JSON-file settings store (%APPDATA%\AndroidFiles\settings.json).
+/// Tiny JSON-file settings store (%APPDATA%\AndroidFiles\settings.json on
+/// Windows, ~/Library/Application Support/AndroidFiles/settings.json on macOS).
 class Settings {
   String adbPath;
   String lastDestination;
@@ -100,6 +110,12 @@ class Settings {
 
   final List<Profile> profiles;
 
+  /// Optional override file for tests; when null, saves go to `appDataDir()`.
+  final File? storageFile;
+
+  /// Prevents concurrent `save()` calls from racing on disk.
+  Future<void> _saveChain = Future.value();
+
   Settings({
     required this.adbPath,
     this.lastDestination = '',
@@ -120,6 +136,7 @@ class Settings {
     this.parallelStreams = 8,
     List<String>? clutterPatterns,
     List<Profile>? profiles,
+    this.storageFile,
   })  : driveExePath = driveExePath ?? defaultDriveExePath(),
         clutterPatterns = clutterPatterns ?? List.of(defaultClutterPatterns),
         profiles = profiles ?? [];
@@ -129,6 +146,7 @@ class Settings {
   /// finds via the working directory — never hardcode a path here, it ends up
   /// written into every user's settings.json.
   static String defaultDriveExePath() {
+    if (!Platform.isWindows) return ''; // WinFsp drive host: Windows-only
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final shipped = '$exeDir\\drive\\AdbDrive.exe';
     if (File(shipped).existsSync()) return shipped;
@@ -139,16 +157,13 @@ class Settings {
     return shipped;
   }
 
-  static File _file() {
-    final appData = Platform.environment['APPDATA'] ?? '.';
-    return File('$appData\\AndroidFiles\\settings.json');
-  }
+  static File _file() => File(localJoin(appDataDir(), 'settings.json'));
 
   static Future<Settings> load() async {
     var adbPath = 'adb';
     for (final candidate in [
-      r'D:\Dev\tools\platform-tools\adb.exe',
-      '${Platform.environment['LOCALAPPDATA']}\\Android\\Sdk\\platform-tools\\adb.exe',
+      if (Platform.isWindows) r'D:\Dev\tools\platform-tools\adb.exe',
+      ...AdbInstaller.knownLocations,
     ]) {
       if (await File(candidate).exists()) {
         adbPath = candidate;
@@ -195,10 +210,13 @@ class Settings {
     return settings;
   }
 
-  Future<void> save() async {
-    final f = _file();
-    await f.parent.create(recursive: true);
-    await f.writeAsString(jsonEncode({
+  Future<void> save() {
+    // Never let unit/widget tests clobber the user's real settings.json!
+    if (storageFile == null &&
+        Platform.environment.containsKey('FLUTTER_TEST')) {
+      return Future.value();
+    }
+    final payload = jsonEncode({
       'adbPath': adbPath,
       'lastDestination': lastDestination,
       'lastDeviceSerial': lastDeviceSerial,
@@ -218,6 +236,14 @@ class Settings {
       'parallelStreams': parallelStreams,
       'clutterPatterns': clutterPatterns,
       'profiles': [for (final p in profiles) p.toJson()],
-    }));
+    });
+    final f = storageFile ?? _file();
+    _saveChain = _saveChain.catchError((_) {}).then((_) async {
+      await f.parent.create(recursive: true);
+      final tmp = File('${f.path}.tmp');
+      await tmp.writeAsString(payload, flush: true);
+      await tmp.rename(f.path);
+    });
+    return _saveChain;
   }
 }

@@ -1,6 +1,7 @@
-// Generates windows/runner/resources/app_icon.ico.
+// Generates windows/runner/resources/app_icon.ico, or with --macos the
+// macOS app icon set (macos/Runner/Assets.xcassets/AppIcon.appiconset).
 //
-//   dart run tool/gen_icon.dart [--preview]
+//   dart run tool/gen_icon.dart [--preview | --macos]
 //
 // Every frame is drawn at its own target size rather than downscaled from one
 // master: an icon that is legible at 256 is mush at 16, so the small frames
@@ -137,7 +138,28 @@ void main(List<String> args) {
     return;
   }
 
+  if (args.contains('--macos')) {
+    writeMacIcons();
+    return;
+  }
+
   final ico = IcoEncoder().encodeImages(frames);
   File('windows/runner/resources/app_icon.ico').writeAsBytesSync(ico);
   stdout.writeln('Wrote app_icon.ico (${ico.length} bytes, sizes: $sizes)');
+}
+
+/// macOS icons sit on Apple's grid: the tile fills 824 of every 1024 pixels,
+/// centred, with transparent margin around it — a full-bleed tile looks
+/// oversized next to every other icon in the Dock. Each size is still drawn
+/// at its own resolution, so the small ones get the simplified glyph.
+void writeMacIcons() {
+  const dir = 'macos/Runner/Assets.xcassets/AppIcon.appiconset';
+  for (final size in const [16, 32, 64, 128, 256, 512, 1024]) {
+    final inner = (size * 824 / 1024).round();
+    final canvas = Image(width: size, height: size, numChannels: 4);
+    final offset = (size - inner) ~/ 2;
+    compositeImage(canvas, renderFrame(inner), dstX: offset, dstY: offset);
+    File('$dir/app_icon_$size.png').writeAsBytesSync(encodePng(canvas));
+  }
+  stdout.writeln('Wrote macOS app icons to $dir');
 }

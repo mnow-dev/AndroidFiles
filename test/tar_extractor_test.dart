@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:android_files/src/os.dart';
 import 'package:android_files/src/tar_extractor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,15 +49,15 @@ void main() {
     await x.close();
 
     expect(x.filesWritten, 3);
-    final utf8File = File('${dest.path}\\D\\zażółć gęślą.txt');
+    final utf8File = File(localJoin(dest.path, 'D/zażółć gęślą.txt'));
     expect(utf8File.existsSync(), true);
     expect(utf8File.statSync().modified.toUtc(),
         DateTime.fromMillisecondsSinceEpoch(mtime * 1000, isUtc: true));
-    expect(File('${dest.path}\\$longName'.replaceAll('/', '\\')).readAsStringSync(),
+    expect(File(localJoin(dest.path, longName)).readAsStringSync(),
         'ok');
-    expect(File('${dest.path}\\empty.txt').existsSync(), false);
-    expect(File('${dest.path}\\D\\empty.txt').existsSync(), true);
-    expect(File('${dest.path}\\evil.txt').existsSync(), false);
+    expect(File(localJoin(dest.path, 'empty.txt')).existsSync(), false);
+    expect(File(localJoin(dest.path, 'D/empty.txt')).existsSync(), true);
+    expect(File(localJoin(dest.path, 'evil.txt')).existsSync(), false);
     expect(x.warnings.any((w) => w.contains('evil')), true);
   });
 
@@ -72,8 +73,8 @@ void main() {
     await x.add(archive.takeBytes());
     await x.close(); // simulates a cancelled/killed stream
 
-    expect(File('${dest.path}\\good.txt').readAsStringSync(), 'ok');
-    expect(File('${dest.path}\\cut.bin').existsSync(), false);
+    expect(File(localJoin(dest.path, 'good.txt')).readAsStringSync(), 'ok');
+    expect(File(localJoin(dest.path, 'cut.bin')).existsSync(), false);
     expect(x.warnings.any((w) => w.contains('incomplete')), true);
   });
 
@@ -101,7 +102,7 @@ void main() {
     await x.add(archive.takeBytes());
     await x.close();
 
-    final f = File('${dest.path}\\D\\päx überride.dat');
+    final f = File(localJoin(dest.path, 'D/päx überride.dat'));
     expect(f.readAsStringSync(), 'abc');
     expect(f.statSync().modified.toUtc(),
         DateTime.fromMillisecondsSinceEpoch(1600000000 * 1000, isUtc: true));

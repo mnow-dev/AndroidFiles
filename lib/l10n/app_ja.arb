@@ -142,5 +142,12 @@
   "stepConnectPhone": "端末を接続してください（USB または上の Wi-Fi アイコン）",
   "stepTickFolders": "左のツリーで保存するフォルダーにチェック",
   "stepChooseDestination": "保存先を選んで「バックアップ」を押す",
-  "onboardingTips": "ヒント：エクスプローラーからツリーにファイルをドラッグして端末へコピー · 選択をプロファイルとして保存すればワンクリック再実行や毎日のスケジュールが可能 · 上部のディスクアイコンでエクスプローラーに端末を直接表示"
+  "onboardingTips": "ヒント：エクスプローラーからツリーにファイルをドラッグして端末へコピー · 選択をプロファイルとして保存すればワンクリック再実行や毎日のスケジュールが可能 · 上部のディスクアイコンでエクスプローラーに端末を直接表示",
+
+  "destinationPlaceholderMac": "この Mac または外付けドライブ上のフォルダー（例: /Volumes/MyDrive/PhoneBackup）",
+  "onboardingTipsMac": "ヒント：Finder からツリーにファイルをドラッグして端末へコピー · 選択をプロファイルとして保存すればワンクリック再実行や毎日のスケジュールが可能",
+  "themeSystemMac": "macOS に従う",
+  "locateAdb": "adb を選択",
+  "scheduleNoteMac": "ログイン中に launchd で実行されます。Mac のスリープ中に逃した実行はスリープ解除時に行われます。端末が接続されている必要があります（USB または Wi-Fi デバッグ）。",
+  "driveNotConnected": "ドライブ「{name}」が接続されていません"
 }

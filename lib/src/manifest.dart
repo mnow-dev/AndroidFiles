@@ -39,7 +39,10 @@ Future<Map<String, FileMeta>> localManifest(String baseDir, String topName) asyn
   await for (final e in root.list(recursive: true, followLinks: false)) {
     if (e is! File) continue;
     final stat = await e.stat();
-    final rel = e.path.substring(basePrefix.length).replaceAll('\\', '/');
+    var rel = e.path.substring(basePrefix.length);
+    // Only Windows needs converting; elsewhere a backslash is an ordinary
+    // filename character and must stay one.
+    if (Platform.isWindows) rel = rel.replaceAll('\\', '/');
     result[rel] = FileMeta(stat.size, stat.modified.millisecondsSinceEpoch ~/ 1000);
   }
   return result;

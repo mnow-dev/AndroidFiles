@@ -191,5 +191,13 @@
   "adbDownloadFailed": "Could not download adb automatically.",
   "adbDownloading": "Downloading adb (platform-tools)… {percent}%",
   "@adbDownloading": { "placeholders": { "percent": {} } },
-  "adbSettingUp": "Setting up adb…"
+  "adbSettingUp": "Setting up adb…",
+
+  "destinationPlaceholderMac": "Folder on this Mac or an external drive, e.g. /Volumes/MyDrive/PhoneBackup",
+  "onboardingTipsMac": "Tips: drag files from Finder onto the tree to copy them TO the phone · save your selection as a profile for one-click re-runs and daily scheduling",
+  "themeSystemMac": "Follow macOS",
+  "locateAdb": "Locate adb",
+  "scheduleNoteMac": "Runs via launchd while you are logged in; a run missed while the Mac sleeps happens when it wakes. The phone must be connected (USB or Wi-Fi debugging).",
+  "driveNotConnected": "Drive \"{name}\" is not connected",
+  "@driveNotConnected": { "placeholders": { "name": {} } }
 }

@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'os.dart';
+
 /// The app's own version. Keep in sync with pubspec.yaml's `version:` — the
 /// update check compares this against the latest GitHub release tag, so if it
 /// drifts below the real shipped version the app nags about an update that is
 /// already installed.
-const appVersion = '0.1.5';
+const appVersion = '0.2.0';
 
 const _releasesApi =
     'https://api.github.com/repos/mnow-dev/AndroidFiles/releases/latest';
@@ -84,10 +86,6 @@ class UpdateChecker {
     return false;
   }
 
-  /// Open a URL in the default browser via the Windows shell.
-  static Future<void> open(String url) async {
-    // `start` is a cmd builtin; the empty first argument is the window title,
-    // so a URL isn't mistaken for one.
-    await Process.run('cmd', ['/c', 'start', '', url]);
-  }
+  /// Open a URL in the default browser.
+  static Future<void> open(String url) => openExternal(url);
 }
