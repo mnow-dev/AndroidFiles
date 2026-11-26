@@ -2,14 +2,17 @@
 
 **Fast, reliable Android phone backups for Windows & macOS — over ADB, not MTP.**
 
-[![Latest release](https://img.shields.io/github/v/release/mnow-dev/AndroidFiles?sort=semver)](https://github.com/mnow-dev/AndroidFiles/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/mnow-dev/AndroidFiles/total)](https://github.com/mnow-dev/AndroidFiles/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/mnow-dev/AndroidFiles/ci.yml?branch=main&label=CI)](https://github.com/mnow-dev/AndroidFiles/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/mnow-dev/AndroidFiles)](LICENSE)
-![Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6)
-![macOS Apple Silicon & Intel](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%2F%20Intel-1D1D1F)
+[![Latest release](https://badgen.net/github/release/mnow-dev/AndroidFiles)](https://github.com/mnow-dev/AndroidFiles/releases/latest)
+[![Downloads](https://badgen.net/github/assets-dl/mnow-dev/AndroidFiles)](https://github.com/mnow-dev/AndroidFiles/releases)
+[![CI](https://github.com/mnow-dev/AndroidFiles/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mnow-dev/AndroidFiles/actions/workflows/ci.yml)
+[![License: MIT](https://badgen.net/github/license/mnow-dev/AndroidFiles)](LICENSE)
+![Windows 10/11 x64](https://badgen.net/badge/platform/Windows%2010%2F11%20x64/0078D6)
+![macOS Apple Silicon & Intel](https://badgen.net/badge/platform/macOS%20Apple%20Silicon%20%26%20Intel/1D1D1F)
 
+#### Windows (Windows 10 & 11)
 ![AndroidFiles on Windows](docs/screenshot.png)
+
+#### macOS (Apple Silicon & Intel)
 ![AndroidFiles on macOS](docs/screenshot-macos.png)
 
 Built-in phone access (MTP on Windows, or third-party MTP tools on macOS)
@@ -101,7 +104,7 @@ AndroidFiles runs natively on macOS (Apple silicon and Intel) with a
 dedicated macOS 3-pane Finder & Inspector UI, native menu bar shortcuts
 (`⌘1`/`⌘2` workspaces, `⌘B` backup, `⌘,` settings), and the **Clean Up
 Space** workspace. Download `AndroidFiles-v*-macos.dmg` from
-[Releases](../../releases/latest) (once published) and drag `AndroidFiles.app`
+[Releases](../../releases/latest) and drag `AndroidFiles.app`
 to Applications, or build from source (see [Building from source](#building-from-source)).
 Backups, incremental runs, external microSD cards, snapshots, verify, restore,
 wireless pairing (via native Bonjour), profiles, and scheduling all work as on
