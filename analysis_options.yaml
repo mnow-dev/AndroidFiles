@@ -10,6 +10,11 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  errors:
+    # Flutter 3.50+ emits deprecation infos for flutter/cupertino.dart,
+    # flutter/material.dart, and gen-l10n's Global*Localizations while older
+    # stable SDKs (3.47.x) don't ship the split material_ui/cupertino_ui yet.
+    deprecated_member_use: ignore
   exclude:
     - third_party/**
     - build/**
