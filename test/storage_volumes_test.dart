@@ -238,6 +238,80 @@ void main() {
       expect(app.entryBackupStatus['/sdcard/DCIM'], EntryBackupStatus.partial);
     });
 
+    test('nested partial folder stays checking and NEVER flashes backedUp before partial', () async {
+      final tmp = await Directory.systemTemp.createTemp('af_no_flash_');
+      addTearDown(() => tmp.delete(recursive: true));
+
+      final localCam = Directory('${tmp.path}/DCIM/Camera');
+      await localCam.create(recursive: true);
+      await File('${localCam.path}/IMG_001.jpg').writeAsBytes([1, 2, 3, 4]);
+
+      final fakeAdb = _FakeListAdb({
+        '/sdcard': const [
+          RemoteEntry(
+            name: 'DCIM',
+            path: '/sdcard/DCIM',
+            isDir: true,
+            modified: '2020-01-01 00:00',
+          ),
+        ],
+        '/sdcard/DCIM': const [
+          RemoteEntry(
+            name: 'Camera',
+            path: '/sdcard/DCIM/Camera',
+            isDir: true,
+            modified: '2020-01-01 00:00',
+          ),
+        ],
+        '/sdcard/DCIM/Camera': const [
+          RemoteEntry(
+            name: 'IMG_001.jpg',
+            path: '/sdcard/DCIM/Camera/IMG_001.jpg',
+            isDir: false,
+            size: 4,
+            modified: '2020-01-01 00:00',
+          ),
+          RemoteEntry(
+            name: 'IMG_002.jpg',
+            path: '/sdcard/DCIM/Camera/IMG_002.jpg',
+            isDir: false,
+            size: 8,
+            modified: '2020-01-01 00:00',
+          ),
+        ],
+      });
+
+      final app = AppController(
+        Settings(adbPath: 'adb', lastDestination: tmp.path),
+        startPolling: false,
+        adb: fakeAdb,
+      );
+      addTearDown(app.dispose);
+      app.selected = const AdbDevice(serial: 'S1', state: 'device', model: 'Pixel 8');
+
+      final dcimHistory = <EntryBackupStatus>[];
+      final camHistory = <EntryBackupStatus>[];
+      app.addListener(() {
+        final d = app.entryBackupStatus['/sdcard/DCIM'];
+        final c = app.entryBackupStatus['/sdcard/DCIM/Camera'];
+        if (d != null && (dcimHistory.isEmpty || dcimHistory.last != d)) {
+          dcimHistory.add(d);
+        }
+        if (c != null && (camHistory.isEmpty || camHistory.last != c)) {
+          camHistory.add(c);
+        }
+      });
+
+      await app.expand('/sdcard');
+      // Let recursive verification of DCIM -> Camera finish.
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(dcimHistory, isNot(contains(EntryBackupStatus.backedUp)));
+      expect(camHistory, isNot(contains(EntryBackupStatus.backedUp)));
+      expect(app.entryBackupStatus['/sdcard/DCIM'], EntryBackupStatus.partial);
+      expect(app.entryBackupStatus['/sdcard/DCIM/Camera'], EntryBackupStatus.partial);
+    });
+
     testWidgets(
       'macOS sidebar shows Storage switcher when external SD card is present',
       (tester) async {
@@ -291,4 +365,15 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.macOS),
     );
   });
+}
+
+class _FakeListAdb extends AdbClient {
+  final Map<String, List<RemoteEntry>> tree;
+  _FakeListAdb(this.tree) : super('adb');
+
+  @override
+  Future<List<RemoteEntry>> list(String serial, String path) async {
+    await Future<void>.delayed(const Duration(milliseconds: 15));
+    return tree[path] ?? const [];
+  }
 }

@@ -23,7 +23,7 @@ import 'updater.dart';
 /// Root state: device polling, directory tree cache, selection, log.
 class AppController extends ChangeNotifier {
   final Settings settings;
-  late final AdbClient adb = AdbClient(settings.adbPath);
+  final AdbClient adb;
   late final BackupEngine engine =
       BackupEngine(adb, log: log, parallelStreams: settings.parallelStreams);
   late final DriveManager drive = DriveManager(settings: settings, log: log);
@@ -62,6 +62,9 @@ class AppController extends ChangeNotifier {
   final Set<String> excluded = {};
   final Set<String> _prefetched = {};
   final Set<String> _prefetchingParents = {};
+  /// Directories currently being recursively listed to verify whether a
+  /// locally-present backup folder is completely backed up or only partial.
+  final Set<String> _verifyingDirs = {};
 
   final List<String> logLines = [];
 
@@ -72,7 +75,8 @@ class AppController extends ChangeNotifier {
   Timer? _destSaveDebounce;
   final Map<String, String> _hwSerialCache = {};
 
-  AppController(this.settings, {bool startPolling = true}) {
+  AppController(this.settings, {bool startPolling = true, AdbClient? adb})
+      : adb = adb ?? AdbClient(settings.adbPath) {
     engine.addListener(notifyListeners);
     engine.addListener(() => KeepAwake.set(engine.isRunning));
     engine.onFilesProgress = (_) => unawaited(refreshBackupStatuses());
@@ -710,6 +714,7 @@ class AppController extends ChangeNotifier {
     excluded.clear();
     _prefetched.clear();
     _prefetchingParents.clear();
+    _verifyingDirs.clear();
     _sizeDebounce?.cancel();
     _sizeToken++;
     selectionBytes = 0;
@@ -778,13 +783,14 @@ class AppController extends ChangeNotifier {
       final isPrefetching = _prefetchingParents.contains(parentPath);
       for (final e in entry.value) {
         final probed = await _probeEntryBackupStatus(e, effectiveBase);
-        next[e.path] = (e.isDir &&
-                probed != EntryBackupStatus.notBackedUp &&
-                probed != EntryBackupStatus.unknown &&
-                !children.containsKey(e.path) &&
-                isPrefetching)
-            ? EntryBackupStatus.checking
-            : probed;
+        final unverifiedLocalDir = e.isDir &&
+            probed != EntryBackupStatus.notBackedUp &&
+            probed != EntryBackupStatus.unknown &&
+            (_verifyingDirs.contains(e.path) ||
+                (!children.containsKey(e.path) &&
+                    (isPrefetching || loading.contains(e.path))));
+        next[e.path] =
+            unverifiedLocalDir ? EntryBackupStatus.checking : probed;
         if (token != _statusToken) return;
       }
     }
@@ -806,13 +812,13 @@ class AppController extends ChangeNotifier {
     var changed = false;
     for (final e in list) {
       final probed = await _probeEntryBackupStatus(e, effectiveBase);
-      final s = (e.isDir &&
-              probed != EntryBackupStatus.notBackedUp &&
-              probed != EntryBackupStatus.unknown &&
-              !children.containsKey(e.path) &&
-              isPrefetching)
-          ? EntryBackupStatus.checking
-          : probed;
+      final unverifiedLocalDir = e.isDir &&
+          probed != EntryBackupStatus.notBackedUp &&
+          probed != EntryBackupStatus.unknown &&
+          (_verifyingDirs.contains(e.path) ||
+              (!children.containsKey(e.path) &&
+                  (isPrefetching || loading.contains(e.path))));
+      final s = unverifiedLocalDir ? EntryBackupStatus.checking : probed;
       if (entryBackupStatus[e.path] != s) {
         entryBackupStatus[e.path] = s;
         changed = true;
@@ -839,6 +845,7 @@ class AppController extends ChangeNotifier {
       var modified = 0;
       var partial = 0;
       var missing = 0;
+      var checking = 0;
       for (final c in kids) {
         if (c.isDir && isKnownEmpty(c.path)) continue;
         final s = statuses[c.path];
@@ -853,17 +860,21 @@ class AppController extends ChangeNotifier {
           case EntryBackupStatus.notBackedUp:
             missing++;
           case EntryBackupStatus.checking:
+            checking++;
           case EntryBackupStatus.unknown:
             break;
         }
       }
-      final total = backed + modified + partial + missing;
+      final total = backed + modified + partial + missing + checking;
       if (total == 0) continue;
       final EntryBackupStatus rolled;
-      if (missing == total) {
-        rolled = EntryBackupStatus.notBackedUp;
-      } else if (missing > 0 || partial > 0) {
+      if (partial > 0 || (missing > 0 && (backed > 0 || modified > 0 || checking > 0))) {
         rolled = EntryBackupStatus.partial;
+      } else if (checking > 0) {
+        // Never flash "Backed up" while any child subfolder is still verifying.
+        rolled = EntryBackupStatus.checking;
+      } else if (missing == total) {
+        rolled = EntryBackupStatus.notBackedUp;
       } else if (modified > 0) {
         rolled = EntryBackupStatus.modified;
       } else {
@@ -972,26 +983,102 @@ class AppController extends ChangeNotifier {
         .where((e) => e.isDir)
         .toList();
     if (dirs.length > 200) return; // don't hammer adb on giant folders
+
+    // Add synchronously BEFORE any await so the concurrent
+    // _refreshBackupStatusFor(parent) call immediately sees checking state
+    // and never flashes "Backed up" before subdirs are verified.
     _prefetchingParents.add(parent);
-    // Mark locally-existing dirs under [parent] as `checking` while we inspect
-    // their contents so they don't flash "Backed up" before rolling to Partial.
-    unawaited(_refreshBackupStatusFor(parent));
     try {
+      // Resolve local backup root once so we can recursively verify nested
+      // locally-present folders (e.g. DCIM -> Camera) while showing a spinner
+      // instead of flashing "Backed up" and later flipping to "Partial".
+      final dest = destination.text.trim();
+      String? effectiveBase;
+      if (dest.isNotEmpty &&
+          unmountedVolume(dest) == null &&
+          await Directory(dest).exists()) {
+        effectiveBase = (await _latestSnapshot(dest)) ?? dest;
+      }
+      unawaited(_refreshBackupStatusFor(parent));
       for (final d in dirs) {
         if (selected?.serial != serial) return; // device changed mid-prefetch
         if (children.containsKey(d.path) || loading.contains(d.path)) continue;
+        final isBackedDir = effectiveBase != null &&
+            (await _probeEntryBackupStatus(d, effectiveBase)) !=
+                EntryBackupStatus.notBackedUp;
+        if (isBackedDir) {
+          _verifyingDirs.add(d.path);
+          if (entryBackupStatus[d.path] != EntryBackupStatus.checking) {
+            entryBackupStatus[d.path] = EntryBackupStatus.checking;
+            notifyListeners();
+          }
+        }
         try {
           children[d.path] = await adb.list(serial, d.path);
-          await _refreshBackupStatusFor(d.path);
-          notifyListeners();
+          if (isBackedDir) {
+            await _verifyBackedSubdirs(
+              serial,
+              d.path,
+              effectiveBase,
+              depth: 1,
+            );
+          }
         } catch (_) {
           // Unknown stays unknown; the chevron remains and a manual expand
           // will surface the error in the log.
+        } finally {
+          _verifyingDirs.remove(d.path);
         }
+        await _refreshBackupStatusFor(d.path);
+        await _refreshBackupStatusFor(parent);
+        notifyListeners();
       }
     } finally {
       _prefetchingParents.remove(parent);
       unawaited(_refreshBackupStatusFor(parent));
+    }
+  }
+
+  /// Recursively list subdirectories under [dirPath] that also exist in the
+  /// local backup (up to depth 4) so nested folders like `DCIM/Camera` are
+  /// verified before their parent ever settles on `Backed up` vs `Partial`.
+  Future<void> _verifyBackedSubdirs(
+    String serial,
+    String dirPath,
+    String effectiveBase, {
+    required int depth,
+  }) async {
+    if (depth > 4 || selected?.serial != serial) return;
+    final subdirs = (children[dirPath] ?? const <RemoteEntry>[])
+        .where((e) => e.isDir)
+        .toList();
+    if (subdirs.isEmpty || subdirs.length > 40) return;
+    for (final sub in subdirs) {
+      if (selected?.serial != serial) return;
+      if (children.containsKey(sub.path) || loading.contains(sub.path)) {
+        continue;
+      }
+      final probed = await _probeEntryBackupStatus(sub, effectiveBase);
+      if (probed == EntryBackupStatus.notBackedUp ||
+          probed == EntryBackupStatus.unknown) {
+        continue;
+      }
+      _verifyingDirs.add(sub.path);
+      entryBackupStatus[sub.path] = EntryBackupStatus.checking;
+      try {
+        children[sub.path] = await adb.list(serial, sub.path);
+        await _verifyBackedSubdirs(
+          serial,
+          sub.path,
+          effectiveBase,
+          depth: depth + 1,
+        );
+      } catch (_) {
+        // Ignore unreadable subdir; leave best-effort state.
+      } finally {
+        _verifyingDirs.remove(sub.path);
+      }
+      await _refreshBackupStatusFor(sub.path);
     }
   }
 
