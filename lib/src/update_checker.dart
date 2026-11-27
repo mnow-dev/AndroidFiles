@@ -8,7 +8,7 @@ import 'os.dart';
 /// update check compares this against the latest GitHub release tag, so if it
 /// drifts below the real shipped version the app nags about an update that is
 /// already installed.
-const appVersion = '0.2.0';
+const appVersion = '0.3.0';
 
 const _releasesApi =
     'https://api.github.com/repos/mnow-dev/AndroidFiles/releases/latest';

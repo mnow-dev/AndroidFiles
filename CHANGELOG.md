@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.3.0 — 2026-11-27
+
+- **Quick Look file previews (macOS & Windows):** Press `Space`, double-click,
+  or click the eye icon on any file in **Device Folders** or **Clean Up Space**
+  (Large Files, Duplicates, Review) to inspect it before backing up or deleting:
+  - **macOS:** Opens in a separate, freely resizable, Full Screen–capable native
+    window powered by Apple's `QLPreviewView` — supporting full interactive video
+    playback, multi-page PDFs, HEIC/RAW/JPG/PNG/WebP photos, HTML, Markdown,
+    code, audio, and Office files.
+  - **Windows:** Floating Fluent lightbox with pan & zoom for images,
+    `Rendered | Source` Markdown, `Readable | Source` HTML, `Formatted | Raw`
+    JSON, `Ctrl+F` Find, copy, and a **Pop Out** button to open an independent
+    resizable preview window.
+  - Loads backed-up files instantly from local disk with zero ADB traffic
+    (`Local backup` badge), gates large unbacked remote media before saturating
+    Wi-Fi, supports `←`/`→` sibling navigation, **Save Copy…**, **Open**, and
+    live **`Include in backup`** / **`Select for cleanup`** toggling.
+- **Clean Up Space → Apps storage breakdown (macOS & Windows):** Inspect
+  per-app storage directly from Android's `dumpsys diskstats` without root,
+  split into **Static APK**, **App Data**, and **Reclaimable Cache**. Includes
+  one-click safe **Trim All Caches** (`pm trim-caches`), User/All app filter,
+  search & sort, plus per-app **Open App Info on Phone**, **Clear Data**, and
+  **Uninstall** (for user-installed apps).
+- **Live Wi-Fi band & link speed indicator:** Shows the connected phone's active
+  Wi-Fi band and Tx link speed right in the sidebar (`5 GHz · 866 Mbps` in
+  green, or `2.4 GHz · 52 Mbps` in amber with a tooltip when 2.4 GHz is capping
+  transfer speed).
+- **Live backup status updates & zero-flash folder verification:** Files and
+  parent folders in **Device Folders** now flip to `Backed up` / `Partial` live
+  as files finish copying (and after Snapshot finalization), and nested backed-up
+  subfolders (like `DCIM/Camera`) stay on a loading spinner while verifying so
+  folders never flash `Backed up` before settling on `Partial`.
+- **macOS Wireless Debugging reliability:** Added `NSLocalNetworkUsageDescription`
+  and `NSBonjourServices` (`_adb-tls-pairing._tcp`, `_adb-tls-connect._tcp`) to
+  `Info.plist`, plus automatic `adb kill-server` recovery when a stale daemon
+  returns `protocol fault` or `No route to host` during pair/connect.
+- **Refined default window sizes** on macOS (`1080×680` main, `1160×800` Quick
+  Look) and Windows (`1080×700`).
+
 ## v0.2.0 — 2026-11-27
 
 - **Native macOS support & DMG releases:** Dedicated 3-pane Finder & Inspector

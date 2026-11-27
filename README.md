@@ -40,9 +40,15 @@ transfer over ADB — saturating the USB link — and verifies what landed.
   APFS/HFS+ on macOS — full history at almost no extra disk cost)
 - **Verified** — file counts checked after every run; optional deep verify
   compares md5 of every file on both sides
+- **Quick Look previews** — press `Space`, double-click, or click the eye icon
+  on any file in **Device Folders** or **Clean Up Space** to preview photos
+  (including HEIC), videos, multi-page PDFs, Markdown, HTML, JSON, and text/code
+  in a separate resizable window (native `QLPreviewView` on macOS, lightbox +
+  Pop Out window on Windows); backed-up files open instantly from local disk
 - **Clean Up Space** — analyze phone storage, inspect largest
-  folders & files, find exact MD5 duplicates, and act on smart proposals
-  (e.g. DCIM videos only, keep last 3/6/12 months, already backed-up
+  folders & files, view per-app **Static APK / App Data / Reclaimable Cache**
+  with one-click **Trim All Caches**, find exact MD5 duplicates, and act on smart
+  proposals (e.g. DCIM videos only, keep last 3/6/12 months, already backed-up
   downloads) with optional **Back up first + verify MD5** before deleting
 - **Explorer drive (Windows)** — mount the phone as a drive letter (WinFsp)
   and it opens in File Explorer for browsing and grabbing files; optional
@@ -59,7 +65,8 @@ transfer over ADB — saturating the USB link — and verifies what landed.
   default or pick one in Settings
 - **Wireless** — pair by scanning a QR code (like Android Studio);
   already-paired phones on your network reconnect automatically (with
-  native Bonjour discovery on macOS). Wireless transfers are split across
+  native Bonjour discovery on macOS), and the sidebar shows live Wi-Fi band
+  and link speed (`5 GHz` vs `2.4 GHz`). Wireless transfers are split across
   8 parallel streams, about 3x faster than a single adb stream over Wi-Fi
 - **Self-contained** — if adb isn't installed, the app downloads Google's
   platform-tools automatically
@@ -135,7 +142,7 @@ For a walkthrough of every feature, see the
 
 ## Status
 
-AndroidFiles is early software (v0.2.0) and in active use, but it reads
+AndroidFiles is early software (v0.3.0) and in active use, but it reads
 from — and, in writable-drive and restore modes, writes to — your phone.
 **Keep at least one independent backup of anything you can't afford to lose**,
 and leave the Explorer drive read-only unless you specifically need to change
