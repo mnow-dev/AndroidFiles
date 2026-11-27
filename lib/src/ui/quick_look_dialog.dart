@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -11,6 +12,7 @@ import '../app_controller.dart';
 import '../backup_engine.dart' show fmtBytes;
 import '../preview_service.dart';
 import 'macos/mac_theme.dart';
+import 'quick_look_window.dart';
 import 'win_theme.dart';
 
 /// Choose a crisp platform-appropriate icon for a [PreviewKind] (shared by the
@@ -44,25 +46,35 @@ IconData iconForPreviewKind(PreviewKind kind, {required bool mac}) {
   };
 }
 
-/// Show the floating Quick Look lightbox for [items] starting at [initialIndex].
+/// Show Quick Look for [items] starting at [initialIndex].
 ///
-/// Works on both macOS (`MacPalette`) and Windows (`WinPalette`). Supports
-/// `Space` / `Esc` to dismiss, `←` / `→` to step through sibling files, pan &
-/// zoom on images, rendered/source views for Markdown/HTML/JSON, poster/player
-/// launch for videos and PDFs, single-file Save Copy, and optional selection
-/// toggling.
+/// On macOS, opens a **separate, freely resizable, fullscreen-capable native
+/// macOS Quick Look window** (`QLPreviewView`) that can grow larger than the
+/// main window and move across displays. On Windows (and in Flutter widget
+/// tests), opens the Fluent lightbox with a **Pop Out** button to launch an
+/// independent resizable window.
 Future<void> showQuickLookDialog(
   BuildContext context, {
   required AppController app,
   required List<PreviewItem> items,
   required int initialIndex,
   bool? macStyle,
-}) {
-  if (items.isEmpty) return Future.value();
+}) async {
+  if (items.isEmpty) return;
   final clamped = initialIndex.clamp(0, items.length - 1);
   final useMac = macStyle ?? Platform.isMacOS;
 
-  return showGeneralDialog<void>(
+  if (useMac && Platform.isMacOS) {
+    final openedNatively = await NativeQuickLookWindow.open(
+      app: app,
+      items: items,
+      initialIndex: clamped,
+    );
+    if (openedNatively) return;
+  }
+
+  if (!context.mounted) return;
+  await showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Close Quick Look',
@@ -85,6 +97,36 @@ Future<void> showQuickLookDialog(
       );
     },
   );
+}
+
+/// Full-window Quick Look view used when AndroidFiles is launched in
+/// standalone preview window mode (`--preview-spec <jsonPath>`, e.g. via the
+/// Windows **Pop Out** button so the preview window can be resized larger than
+/// the main window or maximized).
+class QuickLookStandaloneView extends StatelessWidget {
+  final AppController app;
+  final List<PreviewItem> items;
+  final int initialIndex;
+  final bool macStyle;
+
+  const QuickLookStandaloneView({
+    super.key,
+    required this.app,
+    required this.items,
+    required this.initialIndex,
+    required this.macStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _QuickLookLightbox(
+      app: app,
+      items: items,
+      initialIndex: initialIndex,
+      macStyle: macStyle,
+      standaloneWindow: true,
+    );
+  }
 }
 
 class _QuickLookTheme {
@@ -190,12 +232,14 @@ class _QuickLookLightbox extends StatefulWidget {
   final List<PreviewItem> items;
   final int initialIndex;
   final bool macStyle;
+  final bool standaloneWindow;
 
   const _QuickLookLightbox({
     required this.app,
     required this.items,
     required this.initialIndex,
     required this.macStyle,
+    this.standaloneWindow = false,
   });
 
   @override
@@ -383,6 +427,48 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
     }
   }
 
+  void _closeView() {
+    if (widget.standaloneWindow) {
+      exit(0);
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _popOutWindow() async {
+    final serial = widget.app.selected?.serial;
+    if (serial == null || _busyAction) return;
+    try {
+      final spec = {
+        'serial': serial,
+        'model': widget.app.selected?.model ?? '',
+        'dest': widget.app.destination.text,
+        'index': _index,
+        'items': [
+          for (final it in widget.items)
+            {
+              'name': it.name,
+              'devicePath': it.devicePath,
+              'size': it.size,
+              'modified': it.modified,
+            },
+        ],
+      };
+      final file = File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'af_preview_${DateTime.now().microsecondsSinceEpoch}.json',
+      );
+      await file.writeAsString(jsonEncode(spec), flush: true);
+      await Process.start(
+        Platform.resolvedExecutable,
+        ['--preview-spec', file.path],
+        mode: ProcessStartMode.detached,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => _statusNotice = 'Pop out failed: $e');
+    }
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
@@ -399,7 +485,7 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
         _rootFocus.requestFocus();
         return KeyEventResult.handled;
       }
-      Navigator.of(context).pop();
+      _closeView();
       return KeyEventResult.handled;
     }
 
@@ -417,7 +503,7 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
     if (_findFocus.hasFocus) return KeyEventResult.ignored;
 
     if (key == LogicalKeyboardKey.space) {
-      Navigator.of(context).pop();
+      _closeView();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowLeft ||
@@ -460,56 +546,63 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
     final canNext = _index < widget.items.length - 1;
     final radius = widget.macStyle ? 12.0 : 10.0;
 
+    final content = DefaultTextStyle.merge(
+      style: TextStyle(
+        fontSize: 13,
+        color: t.textPrimary,
+        decoration: TextDecoration.none,
+      ),
+      child: Container(
+        decoration: widget.standaloneWindow
+            ? BoxDecoration(color: t.bg)
+            : BoxDecoration(
+                color: t.bg,
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(color: t.border, width: 1),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x55000000),
+                    blurRadius: 36,
+                    offset: Offset(0, 14),
+                  ),
+                ],
+              ),
+        clipBehavior:
+            widget.standaloneWindow ? Clip.none : Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // --- Header Bar ---
+            _buildHeader(t, item, hasMultiple, canPrev, canNext),
+            // --- Main Preview Stage ---
+            Expanded(child: _buildStage(t, item)),
+            // --- Footer Bar ---
+            _buildFooter(t, item, hasMultiple),
+          ],
+        ),
+      ),
+    );
+
     return Focus(
       focusNode: _rootFocus,
       autofocus: true,
       onKeyEvent: _handleKey,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 960,
-              maxHeight: 720,
-              minWidth: 520,
-              minHeight: 380,
-            ),
-            child: DefaultTextStyle.merge(
-              style: TextStyle(
-                fontSize: 13,
-                color: t.textPrimary,
-                decoration: TextDecoration.none,
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: t.bg,
-                  borderRadius: BorderRadius.circular(radius),
-                  border: Border.all(color: t.border, width: 1),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x55000000),
-                      blurRadius: 36,
-                      offset: Offset(0, 14),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // --- Header Bar ---
-                    _buildHeader(t, item, hasMultiple, canPrev, canNext),
-                    // --- Main Preview Stage ---
-                    Expanded(child: _buildStage(t, item)),
-                    // --- Footer Bar ---
-                    _buildFooter(t, item, hasMultiple),
-                  ],
+      child: widget.standaloneWindow
+          ? content
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 960,
+                    maxHeight: 720,
+                    minWidth: 520,
+                    minHeight: 380,
+                  ),
+                  child: content,
                 ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -624,6 +717,18 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
             Container(width: 1, height: 18, color: t.border),
           ],
           const SizedBox(width: 8),
+          if (!widget.standaloneWindow &&
+              Platform.isWindows &&
+              !Platform.environment.containsKey('FLUTTER_TEST')) ...[
+            _HeaderIconBtn(
+              icon: FluentIcons.mini_expand,
+              tooltip: 'Open in separate resizable window',
+              enabled: !_busyAction,
+              theme: t,
+              onTap: _popOutWindow,
+            ),
+            const SizedBox(width: 6),
+          ],
           _ActionButton(
             label: 'Save Copy…',
             icon: t.macStyle
@@ -643,14 +748,16 @@ class _QuickLookLightboxState extends State<_QuickLookLightbox> {
             enabled: !_busyAction,
             onTap: _openExternally,
           ),
-          const SizedBox(width: 6),
-          _HeaderIconBtn(
-            icon: t.macStyle ? CupertinoIcons.xmark : FluentIcons.chrome_close,
-            tooltip: 'Close (Esc / Space)',
-            enabled: true,
-            theme: t,
-            onTap: () => Navigator.of(context).pop(),
-          ),
+          if (!widget.standaloneWindow) ...[
+            const SizedBox(width: 6),
+            _HeaderIconBtn(
+              icon: t.macStyle ? CupertinoIcons.xmark : FluentIcons.chrome_close,
+              tooltip: 'Close (Esc / Space)',
+              enabled: true,
+              theme: t,
+              onTap: _closeView,
+            ),
+          ],
         ],
       ),
     );

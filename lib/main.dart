@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show AppExitResponse;
 
@@ -9,10 +10,13 @@ import 'package:local_notifier/local_notifier.dart';
 
 import 'l10n/app_localizations.dart';
 import 'src/app_controller.dart';
+import 'src/models.dart';
+import 'src/preview_service.dart';
 import 'src/settings.dart';
 import 'src/ui/home_screen.dart';
 import 'src/ui/macos/mac_home_screen.dart';
 import 'src/ui/macos/mac_theme.dart';
+import 'src/ui/quick_look_dialog.dart';
 
 Future<void> main(List<String> args) async {
   // Velopack dispatches install/update/uninstall hooks to the main exe as
@@ -39,6 +43,57 @@ Future<void> main(List<String> args) async {
   try {
     Directory.current = Directory.systemTemp;
   } catch (_) {}
+  final previewIdx = args.indexOf('--preview-spec');
+  if (previewIdx != -1 && previewIdx + 1 < args.length) {
+    final specPath = args[previewIdx + 1];
+    try {
+      final raw = await File(specPath).readAsString();
+      try {
+        await File(specPath).delete();
+      } catch (_) {}
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final previewCtrl = AppController(settings, startPolling: false);
+      previewCtrl.selected = AdbDevice(
+        serial: (data['serial'] as String?) ?? '',
+        state: 'device',
+        model: (data['model'] as String?) ?? '',
+      );
+      previewCtrl.destination.text = (data['dest'] as String?) ?? '';
+      final rawItems = (data['items'] as List?) ?? const [];
+      final items = [
+        for (final m in rawItems.whereType<Map>())
+          PreviewItem(
+            name: (m['name'] as String?) ?? '',
+            devicePath: (m['devicePath'] as String?) ?? '',
+            size: (m['size'] as num?)?.toInt() ?? 0,
+            modified: (m['modified'] as String?) ?? '',
+          ),
+      ];
+      final initial = (data['index'] as num?)?.toInt() ?? 0;
+      runApp(
+        FluentApp(
+          title: 'AndroidFiles Quick Look',
+          debugShowCheckedModeBanner: false,
+          themeMode: switch (previewCtrl.themeMode) {
+            'dark' => ThemeMode.dark,
+            'system' => ThemeMode.system,
+            _ => ThemeMode.light,
+          },
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
+          home: QuickLookStandaloneView(
+            app: previewCtrl,
+            items: items,
+            initialIndex: initial,
+            macStyle: Platform.isMacOS,
+          ),
+        ),
+      );
+      return;
+    } catch (_) {
+      exit(1);
+    }
+  }
   final controller = AppController(settings);
   final i = args.indexOf('--run-profile');
   if (i != -1 && i + 1 < args.length) {
