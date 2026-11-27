@@ -1,11 +1,14 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_controller.dart';
 import '../backup_engine.dart' show fmtBytes;
 import '../models.dart';
+import '../preview_service.dart';
 import 'dialogs.dart';
+import 'quick_look_dialog.dart';
 import 'win_theme.dart';
 
 /// Left Bento Card: Lazy-loading device folder table with `Last Modified` and
@@ -24,11 +27,60 @@ class _TreePanelState extends State<TreePanel> {
   AppController get app => widget.app;
   bool _dragging = false;
   final _scroll = ScrollController();
+  final _treeFocus = FocusNode();
+  String? _focusedFilePath;
 
   @override
   void dispose() {
     _scroll.dispose();
+    _treeFocus.dispose();
     super.dispose();
+  }
+
+  void _openQuickLook(RemoteEntry target, String parentPath) {
+    final siblings = (app.children[parentPath] ?? const <RemoteEntry>[])
+        .where((e) => !e.isDir)
+        .toList();
+    if (siblings.isEmpty) return;
+    final idx = siblings.indexWhere((e) => e.path == target.path);
+    final items = [
+      for (final e in siblings)
+        PreviewItem(
+          name: e.name,
+          devicePath: e.path,
+          size: e.size,
+          modified: e.modified,
+          backupStatus:
+              app.entryBackupStatus[e.path] ?? EntryBackupStatus.unknown,
+          isChecked: () => app.isSelected(e.path),
+          onToggleChecked: () => app.toggleChecked(e),
+          checkLabel: 'Include in backup',
+        ),
+    ];
+    showQuickLookDialog(
+      context,
+      app: app,
+      items: items,
+      initialIndex: idx < 0 ? 0 : idx,
+      macStyle: false,
+    );
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.space &&
+        _focusedFilePath != null) {
+      final targetPath = _focusedFilePath!;
+      for (final kv in app.children.entries) {
+        for (final e in kv.value) {
+          if (!e.isDir && e.path == targetPath) {
+            _openQuickLook(e, kv.key);
+            return KeyEventResult.handled;
+          }
+        }
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -78,15 +130,18 @@ class _TreePanelState extends State<TreePanel> {
     _buildRows(context, root, 0, rows);
     final rootItems = app.children[root]?.length ?? 0;
 
-    return DropTarget(
-      onDragEntered: (_) => setState(() => _dragging = true),
-      onDragExited: (_) => setState(() => _dragging = false),
-      onDragDone: (detail) {
-        setState(() => _dragging = false);
-        final paths = [for (final f in detail.files) f.path];
-        if (paths.isNotEmpty) showRestoreDialog(context, app, paths);
-      },
-      child: WinBentoCard(
+    return Focus(
+      focusNode: _treeFocus,
+      onKeyEvent: _handleKey,
+      child: DropTarget(
+        onDragEntered: (_) => setState(() => _dragging = true),
+        onDragExited: (_) => setState(() => _dragging = false),
+        onDragDone: (detail) {
+          setState(() => _dragging = false);
+          final paths = [for (final f in detail.files) f.path];
+          if (paths.isNotEmpty) showRestoreDialog(context, app, paths);
+        },
+        child: WinBentoCard(
         child: Container(
           color: _dragging ? p.accentSoft : p.cardBg,
           child: Column(
@@ -258,6 +313,7 @@ class _TreePanelState extends State<TreePanel> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -281,7 +337,19 @@ class _TreePanelState extends State<TreePanel> {
       return;
     }
     for (final e in app.children[path] ?? const <RemoteEntry>[]) {
-      out.add(_EntryRow(app: app, entry: e, depth: depth));
+      out.add(_EntryRow(
+        app: app,
+        entry: e,
+        depth: depth,
+        focused: !e.isDir && _focusedFilePath == e.path,
+        onFocusFile: !e.isDir
+            ? () {
+                setState(() => _focusedFilePath = e.path);
+                _treeFocus.requestFocus();
+              }
+            : null,
+        onQuickLook: !e.isDir ? () => _openQuickLook(e, path) : null,
+      ));
       if (e.isDir) _buildRows(context, e.path, depth + 1, out);
     }
   }
@@ -326,11 +394,17 @@ class _EntryRow extends StatefulWidget {
   final AppController app;
   final RemoteEntry entry;
   final int depth;
+  final bool focused;
+  final VoidCallback? onFocusFile;
+  final VoidCallback? onQuickLook;
 
   const _EntryRow({
     required this.app,
     required this.entry,
     required this.depth,
+    this.focused = false,
+    this.onFocusFile,
+    this.onQuickLook,
   });
 
   @override
@@ -353,25 +427,31 @@ class _EntryRowState extends State<_EntryRow> {
         ? EntryBackupStatus.unknown
         : (app.entryBackupStatus[entry.path] ?? EntryBackupStatus.unknown);
 
-    final rowBg = selected
+    final rowBg = selected || widget.focused
         ? p.rowSelectedBg
         : (_hovered ? p.rowHoverBg : const Color(0x00000000));
 
     return MouseRegion(
-      cursor: canExpand ? SystemMouseCursors.click : MouseCursor.defer,
+      cursor: (canExpand || !entry.isDir)
+          ? SystemMouseCursors.click
+          : MouseCursor.defer,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: canExpand
             ? () => open ? app.collapse(entry.path) : app.expand(entry.path)
-            : null,
+            : widget.onFocusFile,
+        onDoubleTap: widget.onQuickLook,
         child: Container(
           height: 34,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: rowBg,
             border: Border(
-              bottom: BorderSide(color: p.borderSoft, width: 0.75),
+              bottom: BorderSide(
+                color: widget.focused ? p.accent : p.borderSoft,
+                width: widget.focused ? 1.25 : 0.75,
+              ),
             ),
           ),
           child: Row(
@@ -405,13 +485,16 @@ class _EntryRowState extends State<_EntryRow> {
                             ? (entry.isLink
                                 ? FluentIcons.folder_open
                                 : FluentIcons.folder_fill)
-                            : FluentIcons.page,
+                            : iconForPreviewKind(
+                                PreviewService.classifyKind(entry.name),
+                                mac: false,
+                              ),
                         size: 15,
                         color: entry.isDir
                             ? (knownEmpty
                                 ? p.textTertiary.withValues(alpha: 0.45)
                                 : const Color(0xFFF2B824))
-                            : p.textTertiary,
+                            : p.textSecondary,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -428,6 +511,28 @@ class _EntryRowState extends State<_EntryRow> {
                           ),
                         ),
                       ),
+                      if (!entry.isDir &&
+                          widget.onQuickLook != null &&
+                          (_hovered || widget.focused)) ...[
+                        const SizedBox(width: 4),
+                        Tooltip(
+                          message: 'Quick Look (Space)',
+                          child: GestureDetector(
+                            onTap: widget.onQuickLook,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Icon(
+                                FluentIcons.view,
+                                size: 13.5,
+                                color: p.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (!entry.isDir) ...[
                         const SizedBox(width: 6),
                         Text(

@@ -5,7 +5,10 @@ import 'package:flutter/material.dart' show Tooltip;
 import '../../app_controller.dart';
 import '../../backup_engine.dart' show fmtBytes;
 import '../../cleanup_engine.dart';
+import '../../models.dart';
 import '../../os.dart';
+import '../../preview_service.dart';
+import '../quick_look_dialog.dart';
 import 'mac_dialogs.dart';
 import 'mac_theme.dart';
 
@@ -61,6 +64,33 @@ class _MacCleanupViewState extends State<MacCleanupView> {
         }
       });
     }
+  }
+
+  void _openQuickLook(List<ScannedFile> files, int index) {
+    final items = [
+      for (final f in files)
+        PreviewItem(
+          name: f.name,
+          devicePath: f.absPath,
+          size: f.size,
+          modified:
+              '${f.modified.year}-${f.modified.month.toString().padLeft(2, '0')}-${f.modified.day.toString().padLeft(2, '0')} '
+              '${f.modified.hour.toString().padLeft(2, '0')}:${f.modified.minute.toString().padLeft(2, '0')}',
+          backupStatus: f.backedUp
+              ? EntryBackupStatus.backedUp
+              : EntryBackupStatus.notBackedUp,
+          isChecked: () => cleanup.selectedPaths.contains(f.relPath),
+          onToggleChecked: () => cleanup.toggleFile(f.relPath),
+          checkLabel: 'Select for cleanup',
+        ),
+    ];
+    showQuickLookDialog(
+      context,
+      app: app,
+      items: items,
+      initialIndex: index,
+      macStyle: true,
+    );
   }
 
   Future<void> _pickBackupDir() async {
@@ -310,14 +340,20 @@ class _MacCleanupViewState extends State<MacCleanupView> {
                         : switch (_tab) {
                             _CleanupTab.proposals =>
                               _SmartProposalsTab(cleanup: cleanup),
-                            _CleanupTab.large =>
-                              _LargeFilesTab(cleanup: cleanup),
+                            _CleanupTab.large => _LargeFilesTab(
+                                cleanup: cleanup,
+                                onPreview: _openQuickLook,
+                              ),
                             _CleanupTab.duplicates => _DuplicatesTab(
                                 cleanup: cleanup,
                                 onFind: () =>
                                     cleanup.findDuplicates(device.serial),
+                                onPreview: _openQuickLook,
                               ),
-                            _CleanupTab.review => _ReviewTab(cleanup: cleanup),
+                            _CleanupTab.review => _ReviewTab(
+                                cleanup: cleanup,
+                                onPreview: _openQuickLook,
+                              ),
                           },
           ),
 
@@ -791,7 +827,8 @@ class _ProposalCardState extends State<_ProposalCard> {
 
 class _LargeFilesTab extends StatelessWidget {
   final CleanupController cleanup;
-  const _LargeFilesTab({required this.cleanup});
+  final void Function(List<ScannedFile> files, int index) onPreview;
+  const _LargeFilesTab({required this.cleanup, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -1007,6 +1044,7 @@ class _LargeFilesTab extends StatelessWidget {
                             file: f,
                             checked: checked,
                             onTap: () => cleanup.toggleFile(f.relPath),
+                            onPreview: () => onPreview(largeFiles, i),
                           );
                         },
                       ),
@@ -1022,8 +1060,13 @@ class _LargeFilesTab extends StatelessWidget {
 class _DuplicatesTab extends StatelessWidget {
   final CleanupController cleanup;
   final VoidCallback onFind;
+  final void Function(List<ScannedFile> files, int index) onPreview;
 
-  const _DuplicatesTab({required this.cleanup, required this.onFind});
+  const _DuplicatesTab({
+    required this.cleanup,
+    required this.onFind,
+    required this.onPreview,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1231,6 +1274,7 @@ class _DuplicatesTab extends StatelessWidget {
                           g.files[idx].relPath,
                         ),
                         onTap: () => cleanup.toggleFile(g.files[idx].relPath),
+                        onPreview: () => onPreview(g.files, idx),
                       ),
                     ],
                   ],
@@ -1249,12 +1293,14 @@ class _DuplicateCopyRow extends StatelessWidget {
   final bool recommendedKeep;
   final bool checked;
   final VoidCallback onTap;
+  final VoidCallback? onPreview;
 
   const _DuplicateCopyRow({
     required this.file,
     required this.recommendedKeep,
     required this.checked,
     required this.onTap,
+    this.onPreview,
   });
 
   @override
@@ -1264,6 +1310,7 @@ class _DuplicateCopyRow extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
+        onDoubleTap: onPreview,
         child: Container(
           margin: const EdgeInsets.only(top: 3),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -1287,6 +1334,26 @@ class _DuplicateCopyRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onPreview != null) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Quick Look',
+                  child: GestureDetector(
+                    onTap: onPreview,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Icon(
+                        CupertinoIcons.eye,
+                        size: 13.5,
+                        color: p.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(width: 8),
               if (recommendedKeep)
                 MacStatusPill(
@@ -1310,7 +1377,8 @@ class _DuplicateCopyRow extends StatelessWidget {
 
 class _ReviewTab extends StatelessWidget {
   final CleanupController cleanup;
-  const _ReviewTab({required this.cleanup});
+  final void Function(List<ScannedFile> files, int index) onPreview;
+  const _ReviewTab({required this.cleanup, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -1361,6 +1429,7 @@ class _ReviewTab extends StatelessWidget {
                 file: f,
                 checked: true,
                 onTap: () => cleanup.toggleFile(f.relPath),
+                onPreview: () => onPreview(selected, i),
               );
             },
           ),
@@ -1374,11 +1443,13 @@ class _FileCheckRow extends StatelessWidget {
   final ScannedFile file;
   final bool checked;
   final VoidCallback onTap;
+  final VoidCallback? onPreview;
 
   const _FileCheckRow({
     required this.file,
     required this.checked,
     required this.onTap,
+    this.onPreview,
   });
 
   @override
@@ -1392,6 +1463,7 @@ class _FileCheckRow extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
+        onDoubleTap: onPreview,
         child: Container(
           margin: const EdgeInsets.only(bottom: 2),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1434,6 +1506,26 @@ class _FileCheckRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onPreview != null) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Quick Look',
+                  child: GestureDetector(
+                    onTap: onPreview,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Icon(
+                        CupertinoIcons.eye,
+                        size: 13.5,
+                        color: p.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(width: 8),
               if (file.backedUp)
                 Tooltip(

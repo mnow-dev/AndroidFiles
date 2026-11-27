@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'manifest.dart';
 import 'models.dart';
@@ -630,6 +631,47 @@ class AdbClient {
   /// -a preserves mtimes, which incremental compares rely on.
   Future<Process> startPull(String serial, String path, String destDir) {
     return Process.start(adbPath, ['-s', serial, 'pull', '-a', path, destDir]);
+  }
+
+  /// Read up to [maxBytes] from the beginning of a device file using binary-safe
+  /// `exec-out head -c`, allowing instant text/code/Markdown/HTML previews even
+  /// on huge log files without transferring the whole file.
+  Future<Uint8List> readFileHead(
+    String serial,
+    String path, {
+    int maxBytes = 524288,
+  }) async {
+    final r = await Process.run(
+      adbPath,
+      ['-s', serial, 'exec-out', 'head -c $maxBytes ${shellQuote(path)}'],
+      stdoutEncoding: null,
+      stderrEncoding: utf8,
+    ).timeout(const Duration(seconds: 30));
+    if (r.exitCode != 0) {
+      throw AdbException(
+          'Cannot read $path (${r.exitCode}): ${(r.stderr as String).trim()}');
+    }
+    final out = r.stdout;
+    if (out is Uint8List) return out;
+    if (out is List<int>) return Uint8List.fromList(out);
+    return Uint8List(0);
+  }
+
+  /// Pull a single device file to an exact [localPath] (used by Quick Look
+  /// previews and single-file Save Copy).
+  Future<void> pullFile(
+    String serial,
+    String devicePath,
+    String localPath,
+  ) async {
+    final r = await _run(
+      ['-s', serial, 'pull', '-a', devicePath, localPath],
+      timeout: const Duration(minutes: 5),
+    );
+    if (r.exitCode != 0) {
+      final msg = '${r.stderr}${r.stdout}'.trim();
+      throw AdbException('adb pull failed (${r.exitCode}): $msg');
+    }
   }
 
   static String dirname(String p) {

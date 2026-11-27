@@ -14,6 +14,7 @@ import 'drive_manager.dart';
 import 'keep_awake.dart';
 import 'models.dart';
 import 'os.dart';
+import 'preview_service.dart';
 import 'selection.dart';
 import 'settings.dart';
 import 'update_checker.dart';
@@ -28,6 +29,7 @@ class AppController extends ChangeNotifier {
   late final DriveManager drive = DriveManager(settings: settings, log: log);
   late final CleanupController cleanup =
       CleanupController(adb: adb, log: log);
+  late final PreviewService preview = PreviewService(adb: adb, log: log);
 
   static const rootPath = '/sdcard';
 
@@ -364,6 +366,7 @@ class AppController extends ChangeNotifier {
     _qrTimer?.cancel();
     engine.cancelAll();
     unawaited(drive.unmount());
+    unawaited(preview.clearCache());
   }
 
   @override

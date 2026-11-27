@@ -1,11 +1,14 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Tooltip;
+import 'package:flutter/services.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../app_controller.dart';
 import '../../backup_engine.dart' show fmtBytes;
 import '../../models.dart';
+import '../../preview_service.dart';
+import '../quick_look_dialog.dart';
 import '../win_theme.dart' show formatShortModified;
 import 'mac_dialogs.dart';
 import 'mac_theme.dart';
@@ -24,12 +27,61 @@ class MacTreePane extends StatefulWidget {
 class _MacTreePaneState extends State<MacTreePane> {
   AppController get app => widget.app;
   final _scroll = ScrollController();
+  final _treeFocus = FocusNode();
   bool _dragging = false;
+  String? _focusedFilePath;
 
   @override
   void dispose() {
     _scroll.dispose();
+    _treeFocus.dispose();
     super.dispose();
+  }
+
+  void _openQuickLook(RemoteEntry target, String parentPath) {
+    final siblings = (app.children[parentPath] ?? const <RemoteEntry>[])
+        .where((e) => !e.isDir)
+        .toList();
+    if (siblings.isEmpty) return;
+    final idx = siblings.indexWhere((e) => e.path == target.path);
+    final items = [
+      for (final e in siblings)
+        PreviewItem(
+          name: e.name,
+          devicePath: e.path,
+          size: e.size,
+          modified: e.modified,
+          backupStatus:
+              app.entryBackupStatus[e.path] ?? EntryBackupStatus.unknown,
+          isChecked: () => app.isSelected(e.path),
+          onToggleChecked: () => app.toggleChecked(e),
+          checkLabel: 'Include in backup',
+        ),
+    ];
+    showQuickLookDialog(
+      context,
+      app: app,
+      items: items,
+      initialIndex: idx < 0 ? 0 : idx,
+      macStyle: true,
+    );
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.space &&
+        _focusedFilePath != null) {
+      final targetPath = _focusedFilePath!;
+      for (final kv in app.children.entries) {
+        for (final e in kv.value) {
+          if (!e.isDir && e.path == targetPath) {
+            _openQuickLook(e, kv.key);
+            return KeyEventResult.handled;
+          }
+        }
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -49,15 +101,18 @@ class _MacTreePaneState extends State<MacTreePane> {
 
     final rootItems = app.children[app.activeRootPath]?.length ?? 0;
 
-    return DropTarget(
-      onDragEntered: (_) => setState(() => _dragging = true),
-      onDragExited: (_) => setState(() => _dragging = false),
-      onDragDone: (detail) {
-        setState(() => _dragging = false);
-        final paths = [for (final f in detail.files) f.path];
-        if (paths.isNotEmpty) showMacRestoreDialog(context, app, paths);
-      },
-      child: LayoutBuilder(
+    return Focus(
+      focusNode: _treeFocus,
+      onKeyEvent: _handleKey,
+      child: DropTarget(
+        onDragEntered: (_) => setState(() => _dragging = true),
+        onDragExited: (_) => setState(() => _dragging = false),
+        onDragDone: (detail) {
+          setState(() => _dragging = false);
+          final paths = [for (final f in detail.files) f.path];
+          if (paths.isNotEmpty) showMacRestoreDialog(context, app, paths);
+        },
+        child: LayoutBuilder(
         builder: (context, constraints) {
           final showModified = constraints.maxWidth >= 430;
           final showStatus = constraints.maxWidth >= 340;
@@ -225,6 +280,7 @@ class _MacTreePaneState extends State<MacTreePane> {
           );
         },
       ),
+      ),
     );
   }
 
@@ -267,6 +323,14 @@ class _MacTreePaneState extends State<MacTreePane> {
         depth: depth,
         showModified: showModified,
         showStatus: showStatus,
+        focused: !e.isDir && _focusedFilePath == e.path,
+        onFocusFile: !e.isDir
+            ? () {
+                setState(() => _focusedFilePath = e.path);
+                _treeFocus.requestFocus();
+              }
+            : null,
+        onQuickLook: !e.isDir ? () => _openQuickLook(e, path) : null,
       ));
       if (e.isDir) {
         _buildRows(
@@ -288,6 +352,9 @@ class _MacTreeRow extends StatefulWidget {
   final int depth;
   final bool showModified;
   final bool showStatus;
+  final bool focused;
+  final VoidCallback? onFocusFile;
+  final VoidCallback? onQuickLook;
 
   const _MacTreeRow({
     required this.app,
@@ -295,6 +362,9 @@ class _MacTreeRow extends StatefulWidget {
     required this.depth,
     required this.showModified,
     required this.showStatus,
+    this.focused = false,
+    this.onFocusFile,
+    this.onQuickLook,
   });
 
   @override
@@ -317,19 +387,22 @@ class _MacTreeRowState extends State<_MacTreeRow> {
         ? EntryBackupStatus.unknown
         : (widget.app.entryBackupStatus[e.path] ?? EntryBackupStatus.unknown);
 
-    final rowBg = explicitlyChecked
+    final rowBg = explicitlyChecked || widget.focused
         ? p.surfaceSelected
         : (_hovered ? p.surfaceHover : const Color(0x00000000));
 
     return MouseRegion(
-      cursor: canExpand ? SystemMouseCursors.click : MouseCursor.defer,
+      cursor: (canExpand || !e.isDir)
+          ? SystemMouseCursors.click
+          : MouseCursor.defer,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: canExpand
             ? () =>
                 open ? widget.app.collapse(e.path) : widget.app.expand(e.path)
-            : null,
+            : widget.onFocusFile,
+        onDoubleTap: widget.onQuickLook,
         child: Container(
           height: 29,
           margin: const EdgeInsets.only(bottom: 1),
@@ -340,6 +413,12 @@ class _MacTreeRowState extends State<_MacTreeRow> {
           decoration: BoxDecoration(
             color: rowBg,
             borderRadius: BorderRadius.circular(6),
+            border: widget.focused
+                ? Border.all(
+                    color: p.green.withValues(alpha: 0.55),
+                    width: 1,
+                  )
+                : null,
           ),
           child: Row(
             children: [
@@ -367,9 +446,12 @@ class _MacTreeRowState extends State<_MacTreeRow> {
                 SizedBox(
                   width: 16,
                   child: Icon(
-                    CupertinoIcons.doc,
+                    iconForPreviewKind(
+                      PreviewService.classifyKind(e.name),
+                      mac: true,
+                    ),
                     size: 14,
-                    color: p.textTertiary,
+                    color: p.textSecondary,
                   ),
                 ),
               const SizedBox(width: 8),
@@ -384,6 +466,26 @@ class _MacTreeRowState extends State<_MacTreeRow> {
                   ),
                 ),
               ),
+              if (!e.isDir && widget.onQuickLook != null && (_hovered || widget.focused)) ...[
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: 'Quick Look (Space)',
+                  child: GestureDetector(
+                    onTap: widget.onQuickLook,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Icon(
+                        CupertinoIcons.eye,
+                        size: 13.5,
+                        color: p.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (!e.isDir) ...[
                 const SizedBox(width: 8),
                 Text(

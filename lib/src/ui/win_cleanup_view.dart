@@ -4,8 +4,11 @@ import 'package:fluent_ui/fluent_ui.dart';
 import '../app_controller.dart';
 import '../backup_engine.dart' show fmtBytes;
 import '../cleanup_engine.dart';
+import '../models.dart';
 import '../os.dart';
+import '../preview_service.dart';
 import 'dialogs.dart';
+import 'quick_look_dialog.dart';
 import 'win_theme.dart';
 
 enum _WinCleanupTab { proposals, large, duplicates, review }
@@ -60,6 +63,33 @@ class _WinCleanupViewState extends State<WinCleanupView> {
         }
       });
     }
+  }
+
+  void _openQuickLook(List<ScannedFile> files, int index) {
+    final items = [
+      for (final f in files)
+        PreviewItem(
+          name: f.name,
+          devicePath: f.absPath,
+          size: f.size,
+          modified:
+              '${f.modified.year}-${f.modified.month.toString().padLeft(2, '0')}-${f.modified.day.toString().padLeft(2, '0')} '
+              '${f.modified.hour.toString().padLeft(2, '0')}:${f.modified.minute.toString().padLeft(2, '0')}',
+          backupStatus: f.backedUp
+              ? EntryBackupStatus.backedUp
+              : EntryBackupStatus.notBackedUp,
+          isChecked: () => cleanup.selectedPaths.contains(f.relPath),
+          onToggleChecked: () => cleanup.toggleFile(f.relPath),
+          checkLabel: 'Select for cleanup',
+        ),
+    ];
+    showQuickLookDialog(
+      context,
+      app: app,
+      items: items,
+      initialIndex: index,
+      macStyle: false,
+    );
   }
 
   Future<void> _pickBackupDir() async {
@@ -301,15 +331,20 @@ class _WinCleanupViewState extends State<WinCleanupView> {
                           : switch (_tab) {
                               _WinCleanupTab.proposals =>
                                 _ProposalsTab(cleanup: cleanup),
-                              _WinCleanupTab.large =>
-                                _LargeFilesTab(cleanup: cleanup),
+                              _WinCleanupTab.large => _LargeFilesTab(
+                                  cleanup: cleanup,
+                                  onPreview: _openQuickLook,
+                                ),
                               _WinCleanupTab.duplicates => _DuplicatesTab(
                                   cleanup: cleanup,
                                   onFind: () =>
                                       cleanup.findDuplicates(device.serial),
+                                  onPreview: _openQuickLook,
                                 ),
-                              _WinCleanupTab.review =>
-                                _ReviewTab(cleanup: cleanup),
+                              _WinCleanupTab.review => _ReviewTab(
+                                  cleanup: cleanup,
+                                  onPreview: _openQuickLook,
+                                ),
                             },
             ),
           ),
@@ -618,7 +653,8 @@ class _ProposalsTab extends StatelessWidget {
 
 class _LargeFilesTab extends StatelessWidget {
   final CleanupController cleanup;
-  const _LargeFilesTab({required this.cleanup});
+  final void Function(List<ScannedFile> files, int index) onPreview;
+  const _LargeFilesTab({required this.cleanup, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -819,6 +855,7 @@ class _LargeFilesTab extends StatelessWidget {
                           checked:
                               cleanup.selectedPaths.contains(files[i].relPath),
                           onToggle: () => cleanup.toggleFile(files[i].relPath),
+                          onPreview: () => onPreview(files, i),
                         ),
                       ),
               ),
@@ -833,7 +870,12 @@ class _LargeFilesTab extends StatelessWidget {
 class _DuplicatesTab extends StatelessWidget {
   final CleanupController cleanup;
   final VoidCallback onFind;
-  const _DuplicatesTab({required this.cleanup, required this.onFind});
+  final void Function(List<ScannedFile> files, int index) onPreview;
+  const _DuplicatesTab({
+    required this.cleanup,
+    required this.onFind,
+    required this.onPreview,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -984,6 +1026,7 @@ class _DuplicatesTab extends StatelessWidget {
                             cleanup.selectedPaths.contains(g.files[j].relPath),
                         keepRecommended: j == 0,
                         onToggle: () => cleanup.toggleFile(g.files[j].relPath),
+                        onPreview: () => onPreview(g.files, j),
                       ),
                   ],
                 ),
@@ -998,7 +1041,8 @@ class _DuplicatesTab extends StatelessWidget {
 
 class _ReviewTab extends StatelessWidget {
   final CleanupController cleanup;
-  const _ReviewTab({required this.cleanup});
+  final void Function(List<ScannedFile> files, int index) onPreview;
+  const _ReviewTab({required this.cleanup, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -1046,6 +1090,7 @@ class _ReviewTab extends StatelessWidget {
               file: selected[i],
               checked: true,
               onToggle: () => cleanup.toggleFile(selected[i].relPath),
+              onPreview: () => onPreview(selected, i),
             ),
           ),
         ),
@@ -1059,12 +1104,14 @@ class _ScannedFileRow extends StatelessWidget {
   final bool checked;
   final bool keepRecommended;
   final VoidCallback onToggle;
+  final VoidCallback? onPreview;
 
   const _ScannedFileRow({
     required this.file,
     required this.checked,
     this.keepRecommended = false,
     required this.onToggle,
+    this.onPreview,
   });
 
   @override
@@ -1073,82 +1120,99 @@ class _ScannedFileRow extends StatelessWidget {
     final dirText = file.parentDir.isEmpty
         ? file.rootPath
         : '${file.rootPath}/${file.parentDir}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: checked ? p.rowSelectedBg : const Color(0x00000000),
-        border: Border(bottom: BorderSide(color: p.borderSoft, width: 0.75)),
-      ),
-      child: Row(
-        children: [
-          Checkbox(checked: checked, onChanged: (_) => onToggle()),
-          const SizedBox(width: 10),
-          Icon(
-            switch (file.kind) {
-              CleanupMediaKind.video => FluentIcons.play,
-              CleanupMediaKind.photo => FluentIcons.photo2,
-              CleanupMediaKind.audio => FluentIcons.music_in_collection,
-              CleanupMediaKind.archive => FluentIcons.archive,
-              _ => FluentIcons.page,
-            },
-            size: 14,
-            color: p.textSecondary,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  file.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: p.textPrimary,
-                  ),
-                ),
-                Text(
-                  dirText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontFamily: winMonoFont,
-                    color: p.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (keepRecommended) ...[
-            const SizedBox(width: 8),
-            WinPill(
-              label: 'Keep',
-              color: p.accentSoftFg,
-              background: p.accentSoft,
-            ),
-          ],
-          if (file.backedUp) ...[
-            const SizedBox(width: 8),
-            WinPill(
-              label: 'Backed up',
-              color: p.accentSoftFg,
-              background: p.accentSoft,
-            ),
-          ],
-          const SizedBox(width: 10),
-          Text(
-            fmtBytes(file.size),
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
+    return GestureDetector(
+      onDoubleTap: onPreview,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: checked ? p.rowSelectedBg : const Color(0x00000000),
+          border: Border(bottom: BorderSide(color: p.borderSoft, width: 0.75)),
+        ),
+        child: Row(
+          children: [
+            Checkbox(checked: checked, onChanged: (_) => onToggle()),
+            const SizedBox(width: 10),
+            Icon(
+              switch (file.kind) {
+                CleanupMediaKind.video => FluentIcons.play,
+                CleanupMediaKind.photo => FluentIcons.photo2,
+                CleanupMediaKind.audio => FluentIcons.music_in_collection,
+                CleanupMediaKind.archive => FluentIcons.archive,
+                _ => FluentIcons.page,
+              },
+              size: 14,
               color: p.textSecondary,
-              fontFeatures: winTabularFigures,
             ),
-          ),
-        ],
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: p.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    dirText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontFamily: winMonoFont,
+                      color: p.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onPreview != null) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Quick Look',
+                child: IconButton(
+                  icon: Icon(
+                    FluentIcons.view,
+                    size: 13.5,
+                    color: p.textSecondary,
+                  ),
+                  onPressed: onPreview,
+                ),
+              ),
+            ],
+            if (keepRecommended) ...[
+              const SizedBox(width: 8),
+              WinPill(
+                label: 'Keep',
+                color: p.accentSoftFg,
+                background: p.accentSoft,
+              ),
+            ],
+            if (file.backedUp) ...[
+              const SizedBox(width: 8),
+              WinPill(
+                label: 'Backed up',
+                color: p.accentSoftFg,
+                background: p.accentSoft,
+              ),
+            ],
+            const SizedBox(width: 10),
+            Text(
+              fmtBytes(file.size),
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: p.textSecondary,
+                fontFeatures: winTabularFigures,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
