@@ -1,6 +1,6 @@
 cask "androidfiles" do
-  version "0.2.0"
-  sha256 "deebd0d8275f4b44db28f08b33a44a3f828d71f0733f9dddfa09734e1e066a1f"
+  version "0.3.0"
+  sha256 "0ad0fbfb8510de88c66a755035b26529b3c59dec1f8020be37192d6ed3695adb"
 
   url "https://github.com/mnow-dev/AndroidFiles/releases/download/v#{version}/AndroidFiles-v#{version}-macos.dmg"
   name "AndroidFiles"

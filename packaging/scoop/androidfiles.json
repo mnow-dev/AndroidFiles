@@ -1,12 +1,12 @@
 {
-    "version": "0.2.0",
-    "description": "Fast, free Android phone backups & space cleanup for Windows over ADB — incremental, verified, dated snapshots, microSD support, and a mount-as-a-drive mode.",
+    "version": "0.3.0",
+    "description": "Fast, free Android phone backups, Quick Look previews & space cleanup for Windows over ADB — incremental, verified, dated snapshots, microSD support, and a mount-as-a-drive mode.",
     "homepage": "https://github.com/mnow-dev/AndroidFiles",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/mnow-dev/AndroidFiles/releases/download/v0.2.0/AndroidFiles-v0.2.0-windows-x64.zip",
-            "hash": "4e74354171b8e359c33e739b7ee7fb544ce952bce541eb17a49b6c3b1d1c43df"
+            "url": "https://github.com/mnow-dev/AndroidFiles/releases/download/v0.3.0/AndroidFiles-v0.3.0-windows-x64.zip",
+            "hash": "67004d199ae74abaa22ac73efca19118c45031575074c33944eb9c0e058cd252"
         }
     },
     "bin": "android_files.exe",
