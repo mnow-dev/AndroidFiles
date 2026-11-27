@@ -16,6 +16,6 @@ cask "androidfiles" do
 
   zap trash: [
     "~/Library/Application Support/AndroidFiles",
-    "~/Library/Preferences/com.mnow.androidFiles.plist",
+    "~/Library/Preferences/dev.mnow.androidfiles.plist",
   ]
 end

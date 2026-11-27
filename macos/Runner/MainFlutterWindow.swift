@@ -16,11 +16,11 @@ class MainFlutterWindow: NSWindow {
     // Versioned autosave key ensures an older narrower 2-pane frame isn't
     // restored over the wider 3-pane default.
     let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    let defaultH = min(750, max(620, screenFrame.height * 0.80))
-    self.setContentSize(NSSize(width: 1100, height: defaultH))
+    let defaultH = min(730, max(620, screenFrame.height * 0.76))
+    self.setContentSize(NSSize(width: 1080, height: defaultH))
     self.contentMinSize = NSSize(width: 840, height: 520)
     self.center()
-    self.setFrameAutosaveName("AndroidFilesMainWindowV5")
+    self.setFrameAutosaveName("AndroidFilesMainWindowV6")
 
     // Unified transparent titlebar so Flutter renders behind the traffic
     // lights (Finder / Disk Utility style). An empty unified toolbar centers
@@ -157,8 +157,8 @@ private final class NativeQuickLookWindowController: NSObject, NSWindowDelegate 
     if let existing = window { return existing }
 
     let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    let initW = min(1240, max(900, visible.width * 0.82))
-    let initH = min(880, max(660, visible.height * 0.85))
+    let initW = min(1160, max(900, visible.width * 0.76))
+    let initH = min(800, max(640, visible.height * 0.80))
 
     let win = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: initW, height: initH),
@@ -170,7 +170,7 @@ private final class NativeQuickLookWindowController: NSObject, NSWindowDelegate 
     win.isReleasedWhenClosed = false
     win.delegate = self
     win.center()
-    win.setFrameAutosaveName("AndroidFilesQuickLookWindowV2")
+    win.setFrameAutosaveName("AndroidFilesQuickLookWindowV3")
 
     let root = NSView()
     root.translatesAutoresizingMaskIntoConstraints = false
