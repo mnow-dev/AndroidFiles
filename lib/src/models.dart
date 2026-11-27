@@ -89,6 +89,125 @@ class WifiLinkInfo {
       Object.hash(linkSpeedMbps, frequencyMhz, rssiDbm, standard, ssid);
 }
 
+/// Per-app storage usage reported by Android's `dumpsys diskstats`.
+///
+/// Separates **static** storage (`appBytes` = APK/code/libs + `dataBytes` =
+/// app data/databases/media) from **reclaimable** storage (`cacheBytes` =
+/// regenerable cache that can be safely cleared via `pm trim-caches`).
+class AppStorageEntry {
+  final String packageName;
+  final int appBytes;
+  final int dataBytes;
+  final int cacheBytes;
+  final bool isUserApp;
+
+  const AppStorageEntry({
+    required this.packageName,
+    required this.appBytes,
+    required this.dataBytes,
+    required this.cacheBytes,
+    required this.isUserApp,
+  });
+
+  /// Static storage (APK + user data; not automatically reclaimed by cache trim).
+  int get staticBytes => appBytes + dataBytes;
+
+  /// Reclaimable storage (regenerable cache).
+  int get reclaimableBytes => cacheBytes;
+
+  /// Combined storage consumed by this package.
+  int get totalBytes => appBytes + dataBytes + cacheBytes;
+
+  /// Friendly display name derived from well-known packages or the package ID.
+  String get displayName => _friendlyAppName(packageName);
+
+  static const Map<String, String> _knownNames = {
+    'com.google.android.youtube': 'YouTube',
+    'com.google.android.apps.youtube.music': 'YouTube Music',
+    'com.google.android.apps.photos': 'Google Photos',
+    'com.google.android.apps.maps': 'Google Maps',
+    'com.google.android.gm': 'Gmail',
+    'com.google.android.apps.docs': 'Google Drive',
+    'com.google.android.apps.docs.editors.docs': 'Google Docs',
+    'com.google.android.apps.docs.editors.sheets': 'Google Sheets',
+    'com.google.android.apps.docs.editors.slides': 'Google Slides',
+    'com.google.android.googlequicksearchbox': 'Google',
+    'com.google.android.apps.messaging': 'Google Messages',
+    'com.google.android.GoogleCamera': 'Pixel Camera',
+    'com.android.chrome': 'Chrome',
+    'com.android.vending': 'Google Play Store',
+    'com.whatsapp': 'WhatsApp',
+    'com.whatsapp.w4b': 'WhatsApp Business',
+    'org.telegram.messenger': 'Telegram',
+    'org.thoughtcrime.securesms': 'Signal',
+    'jp.naver.line.android': 'LINE',
+    'com.discord': 'Discord',
+    'com.openai.chatgpt': 'ChatGPT',
+    'com.anthropic.claude': 'Claude',
+    'com.spotify.music': 'Spotify',
+    'com.instagram.android': 'Instagram',
+    'com.facebook.katana': 'Facebook',
+    'com.facebook.orca': 'Messenger',
+    'com.zhiliaoapp.musically': 'TikTok',
+    'com.twitter.android': 'X (Twitter)',
+    'com.reddit.frontpage': 'Reddit',
+    'com.netflix.mediaclient': 'Netflix',
+    'com.amazon.avod.thirdpartyclient': 'Prime Video',
+    'com.microsoft.teams': 'Microsoft Teams',
+    'com.Slack': 'Slack',
+    'com.tailscale.ipn': 'Tailscale',
+    'com.shazam.android': 'Shazam',
+    'com.revolut.revolut': 'Revolut',
+    'com.revolut.business': 'Revolut Business',
+    'com.transferwise.android': 'Wise',
+    'com.kouzoh.mercari': 'Mercari',
+    'com.tplink.iot': 'Tapo / Kasa',
+  };
+
+  static String _friendlyAppName(String pkg) {
+    final known = _knownNames[pkg];
+    if (known != null) return known;
+    final parts = pkg.split('.').where((s) => s.isNotEmpty).toList();
+    if (parts.isEmpty) return pkg;
+    const generic = {'android', 'app', 'apps', 'mobile', 'client', 'google', 'com', 'org', 'net', 'io', 'jp', 'co', 'uk', 'gov', 'dev', 'pl'};
+    var candidate = parts.last;
+    if (generic.contains(candidate.toLowerCase()) && parts.length >= 2) {
+      candidate = parts[parts.length - 2];
+    }
+    if (generic.contains(candidate.toLowerCase()) && parts.length >= 3) {
+      candidate = parts[parts.length - 3];
+    }
+    final words = candidate
+        .replaceAll('_', ' ')
+        .replaceAll('-', ' ')
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+    return words.isEmpty ? pkg : words;
+  }
+}
+
+/// Device-wide app storage summary parsed from `dumpsys diskstats`.
+class DeviceAppStorageReport {
+  final List<AppStorageEntry> apps;
+  final int totalAppBytes;
+  final int totalDataBytes;
+  final int totalCacheBytes;
+
+  const DeviceAppStorageReport({
+    required this.apps,
+    required this.totalAppBytes,
+    required this.totalDataBytes,
+    required this.totalCacheBytes,
+  });
+
+  int get totalStaticBytes => totalAppBytes + totalDataBytes;
+  int get totalReclaimableBytes => totalCacheBytes;
+  int get totalBytes => totalAppBytes + totalDataBytes + totalCacheBytes;
+  int get userAppCount => apps.where((a) => a.isUserApp).length;
+}
+
 class RemoteEntry {
   final String name;
   final String path; // absolute path on device

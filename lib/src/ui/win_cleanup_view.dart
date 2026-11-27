@@ -7,11 +7,12 @@ import '../cleanup_engine.dart';
 import '../models.dart';
 import '../os.dart';
 import '../preview_service.dart';
+import 'cleanup_apps_tab.dart';
 import 'dialogs.dart';
 import 'quick_look_dialog.dart';
 import 'win_theme.dart';
 
-enum _WinCleanupTab { proposals, large, duplicates, review }
+enum _WinCleanupTab { proposals, large, apps, duplicates, review }
 
 /// Native Windows 11 Fluent Clean Up Space studio — feature parity with macOS:
 /// storage usage bar, intelligent proposals (DCIM videos only, retention
@@ -279,6 +280,7 @@ class _WinCleanupViewState extends State<WinCleanupView> {
                   items: [
                     (_WinCleanupTab.proposals, 'Smart Proposals'),
                     (_WinCleanupTab.large, 'Large Files & Folders'),
+                    (_WinCleanupTab.apps, 'Apps'),
                     (_WinCleanupTab.duplicates, 'Duplicates'),
                     (_WinCleanupTab.review, reviewLabel),
                   ],
@@ -304,48 +306,52 @@ class _WinCleanupViewState extends State<WinCleanupView> {
           // --- Main Content Bento Card ---
           Expanded(
             child: WinBentoCard(
-              child: cleanup.scanning
-                  ? _BusyPane(
-                      title:
-                          'Scanning ${app.activeRootPath} on ${device.model.isNotEmpty ? device.model : device.serial}…',
-                      subtitle:
-                          'Indexing file sizes, dates, and comparing against your local backup folder.',
-                    )
-                  : cleanup.scanError != null
-                      ? _ErrorPane(
-                          message: cleanup.scanError!,
-                          onRetry: () => cleanup.scan(
-                            device.serial,
-                            app.destination.text,
-                            rootPath: app.activeRootPath,
-                          ),
+              child: _tab == _WinCleanupTab.apps
+                  ? CleanupAppsTab(app: app, macStyle: false)
+                  : cleanup.scanning
+                      ? _BusyPane(
+                          title:
+                              'Scanning ${app.activeRootPath} on ${device.model.isNotEmpty ? device.model : device.serial}…',
+                          subtitle:
+                              'Indexing file sizes, dates, and comparing against your local backup folder.',
                         )
-                      : !cleanup.hasScan
-                          ? _IdlePane(
-                              onScan: () => cleanup.scan(
+                      : cleanup.scanError != null
+                          ? _ErrorPane(
+                              message: cleanup.scanError!,
+                              onRetry: () => cleanup.scan(
                                 device.serial,
                                 app.destination.text,
                                 rootPath: app.activeRootPath,
                               ),
                             )
-                          : switch (_tab) {
-                              _WinCleanupTab.proposals =>
-                                _ProposalsTab(cleanup: cleanup),
-                              _WinCleanupTab.large => _LargeFilesTab(
-                                  cleanup: cleanup,
-                                  onPreview: _openQuickLook,
-                                ),
-                              _WinCleanupTab.duplicates => _DuplicatesTab(
-                                  cleanup: cleanup,
-                                  onFind: () =>
-                                      cleanup.findDuplicates(device.serial),
-                                  onPreview: _openQuickLook,
-                                ),
-                              _WinCleanupTab.review => _ReviewTab(
-                                  cleanup: cleanup,
-                                  onPreview: _openQuickLook,
-                                ),
-                            },
+                          : !cleanup.hasScan
+                              ? _IdlePane(
+                                  onScan: () => cleanup.scan(
+                                    device.serial,
+                                    app.destination.text,
+                                    rootPath: app.activeRootPath,
+                                  ),
+                                )
+                              : switch (_tab) {
+                                  _WinCleanupTab.proposals =>
+                                    _ProposalsTab(cleanup: cleanup),
+                                  _WinCleanupTab.large => _LargeFilesTab(
+                                      cleanup: cleanup,
+                                      onPreview: _openQuickLook,
+                                    ),
+                                  _WinCleanupTab.apps =>
+                                    CleanupAppsTab(app: app, macStyle: false),
+                                  _WinCleanupTab.duplicates => _DuplicatesTab(
+                                      cleanup: cleanup,
+                                      onFind: () =>
+                                          cleanup.findDuplicates(device.serial),
+                                      onPreview: _openQuickLook,
+                                    ),
+                                  _WinCleanupTab.review => _ReviewTab(
+                                      cleanup: cleanup,
+                                      onPreview: _openQuickLook,
+                                    ),
+                                },
             ),
           ),
 

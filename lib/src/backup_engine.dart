@@ -184,6 +184,15 @@ class BackupEngine extends ChangeNotifier {
   /// Fired whenever the queue empties after having run at least one job.
   void Function()? onDrained;
 
+  /// Fired whenever a single backup/restore job finishes (so Device Folders
+  /// backup badges can update immediately instead of waiting for the whole
+  /// queue to drain).
+  void Function(BackupJob job)? onJobFinished;
+
+  /// Fired (throttled ~every 2s) as completed files land on disk during a
+  /// running backup job so Device Folders statuses update live mid-transfer.
+  void Function(BackupJob job)? onFilesProgress;
+
   /// Forces the adb-pull path even when the device has tar (for tests).
   @visibleForTesting
   bool forcePullFallback = false;
@@ -240,6 +249,7 @@ class BackupEngine extends ChangeNotifier {
             await deepVerify(next);
           }
         }
+        onJobFinished?.call(next);
       }
     } finally {
       _running = false;
@@ -502,6 +512,8 @@ class BackupEngine extends ChangeNotifier {
 
     final sw = Stopwatch()..start();
     var lastNotify = 0;
+    var lastFilesNotify = 0;
+    var lastNotifiedFiles = 0;
     var windowStartMs = 0;
     var windowStartBytes = 0;
     job._pausable = true;
@@ -530,6 +542,11 @@ class BackupEngine extends ChangeNotifier {
       if (now - lastNotify >= 200) {
         lastNotify = now;
         job._tick();
+      }
+      if (written > lastNotifiedFiles && now - lastFilesNotify >= 2000) {
+        lastNotifiedFiles = written;
+        lastFilesNotify = now;
+        onFilesProgress?.call(job);
       }
     }
 

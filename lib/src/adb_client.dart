@@ -271,6 +271,172 @@ class AdbClient {
     );
   }
 
+  /// Safe Android package name check (prevents shell injection on `pm`/`am`).
+  static bool isValidPackageName(String pkg) =>
+      RegExp(r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$').hasMatch(pkg);
+
+  /// Fetch per-app storage usage (static APK, app data, reclaimable cache)
+  /// from Android's `dumpsys diskstats` combined with `pm list packages -3`
+  /// to distinguish user-installed apps from preinstalled system packages.
+  Future<DeviceAppStorageReport> appStorageUsage(String serial) async {
+    final results = await Future.wait([
+      _shell(serial, 'dumpsys diskstats', timeout: const Duration(seconds: 20)),
+      _shell(serial, 'pm list packages -3', timeout: const Duration(seconds: 15)),
+    ]);
+    final diskRes = results[0];
+    final pmRes = results[1];
+    if (diskRes.exitCode != 0 && (diskRes.stdout as String).trim().isEmpty) {
+      throw AdbException(
+          'Could not read app storage stats: ${diskRes.stderr}'.trim());
+    }
+    final userPkgs = <String>{};
+    for (final line in const LineSplitter().convert(pmRes.stdout as String)) {
+      final trimmed = line.trim();
+      if (trimmed.startsWith('package:')) {
+        final pkg = trimmed.substring('package:'.length).trim();
+        if (pkg.isNotEmpty) userPkgs.add(pkg);
+      }
+    }
+    return parseDiskstats(diskRes.stdout as String, userPkgs);
+  }
+
+  /// Parse `dumpsys diskstats` output into a [DeviceAppStorageReport].
+  static DeviceAppStorageReport parseDiskstats(
+    String raw,
+    Set<String> userPackages,
+  ) {
+    List<dynamic>? parseJsonLine(String prefix) {
+      final re = RegExp(
+        '^${RegExp.escape(prefix)}\\s*(\\[.*\\])\\s*\$',
+        multiLine: true,
+      );
+      final m = re.firstMatch(raw);
+      if (m == null) return null;
+      try {
+        final decoded = jsonDecode(m.group(1)!);
+        return decoded is List ? decoded : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    int? parseSummaryBytes(String label) {
+      final m = RegExp(
+        '^${RegExp.escape(label)}:\\s*(\\d+)\\s*\$',
+        multiLine: true,
+      ).firstMatch(raw);
+      return m == null ? null : int.tryParse(m.group(1)!);
+    }
+
+    final names = parseJsonLine('Package Names:') ?? const [];
+    final appSizes = parseJsonLine('App Sizes:') ?? const [];
+    final dataSizes = parseJsonLine('App Data Sizes:') ?? const [];
+    final cacheSizes = parseJsonLine('Cache Sizes:') ?? const [];
+
+    final count = names.length;
+    final apps = <AppStorageEntry>[];
+    var sumApp = 0;
+    var sumData = 0;
+    var sumCache = 0;
+
+    int asInt(List<dynamic> list, int i) {
+      if (i >= list.length) return 0;
+      final v = list[i];
+      if (v is int) return v < 0 ? 0 : v;
+      if (v is num) return v < 0 ? 0 : v.toInt();
+      return int.tryParse('$v') ?? 0;
+    }
+
+    for (var i = 0; i < count; i++) {
+      final pkg = '${names[i]}'.trim();
+      if (pkg.isEmpty) continue;
+      final appB = asInt(appSizes, i);
+      final dataB = asInt(dataSizes, i);
+      final cacheB = asInt(cacheSizes, i);
+      sumApp += appB;
+      sumData += dataB;
+      sumCache += cacheB;
+      final isUser = userPackages.contains(pkg);
+      if (!isUser && appB == 0 && dataB == 0 && cacheB == 0) continue;
+      apps.add(AppStorageEntry(
+        packageName: pkg,
+        appBytes: appB,
+        dataBytes: dataB,
+        cacheBytes: cacheB,
+        isUserApp: isUser,
+      ));
+    }
+
+    apps.sort((a, b) => b.totalBytes.compareTo(a.totalBytes));
+    return DeviceAppStorageReport(
+      apps: apps,
+      totalAppBytes: parseSummaryBytes('App Size') ?? sumApp,
+      totalDataBytes: parseSummaryBytes('App Data Size') ?? sumData,
+      totalCacheBytes: parseSummaryBytes('App Cache Size') ?? sumCache,
+    );
+  }
+
+  /// Safely ask Android's PackageManager to trim regenerable app caches
+  /// across the device without touching app data or logins.
+  Future<void> trimAllAppCaches(String serial) async {
+    final r = await _shell(
+      serial,
+      'pm trim-caches 999999999999',
+      timeout: const Duration(seconds: 60),
+    );
+    if (r.exitCode != 0) {
+      throw AdbException(
+          'Trim caches failed: ${(r.stderr as String).trim()}');
+    }
+  }
+
+  /// Open Android's native App Info / Storage settings screen for [packageName]
+  /// on the phone.
+  Future<void> openAppSettings(String serial, String packageName) async {
+    if (!isValidPackageName(packageName)) {
+      throw AdbException('Invalid package name: $packageName');
+    }
+    await _shell(
+      serial,
+      'am start -a android.settings.APPLICATION_DETAILS_SETTINGS '
+      '-d ${shellQuote('package:$packageName')}',
+      timeout: const Duration(seconds: 10),
+    );
+  }
+
+  /// Wipe an app's local data and cache via `pm clear`. Destructive (resets
+  /// app state & logins).
+  Future<void> clearAppData(String serial, String packageName) async {
+    if (!isValidPackageName(packageName)) {
+      throw AdbException('Invalid package name: $packageName');
+    }
+    final r = await _shell(
+      serial,
+      'pm clear ${shellQuote(packageName)}',
+      timeout: const Duration(seconds: 30),
+    );
+    if (r.exitCode != 0 ||
+        !(r.stdout as String).toLowerCase().contains('success')) {
+      throw AdbException(
+          'Clear data failed for $packageName: ${r.stdout}${r.stderr}'.trim());
+    }
+  }
+
+  /// Uninstall a user-installed package via `adb uninstall`.
+  Future<void> uninstallApp(String serial, String packageName) async {
+    if (!isValidPackageName(packageName)) {
+      throw AdbException('Invalid package name: $packageName');
+    }
+    final r = await _run(
+      ['-s', serial, 'uninstall', packageName],
+      timeout: const Duration(seconds: 45),
+    );
+    final out = '${r.stdout}${r.stderr}'.trim();
+    if (r.exitCode != 0 || !out.toLowerCase().contains('success')) {
+      throw AdbException('Uninstall failed for $packageName: $out');
+    }
+  }
+
   /// Fast single-pass scan of user files under [rootPath] (e.g. `/sdcard`).
   /// Uses a trailing slash so symlinked `/sdcard` is traversed, prunes
   /// restricted `Android/data` and `Android/obb` subtrees, and tolerates

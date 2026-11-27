@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:android_files/l10n/app_localizations.dart';
+import 'package:android_files/src/adb_client.dart';
 import 'package:android_files/src/app_controller.dart';
 import 'package:android_files/src/cleanup_engine.dart';
 import 'package:android_files/src/models.dart';
@@ -170,8 +171,69 @@ void main() {
       await tester.tap(find.text('Review (1)'));
       await tester.pump();
       expect(find.text('VID_old.mp4'), findsOneWidget);
+
+      controller.cleanup.appStorage = AdbClient.parseDiskstats(
+        '''
+App Size: 400000000
+App Data Size: 600000000
+App Cache Size: 150000000
+Package Names: ["com.discord","com.android.systemui"]
+App Sizes: [150000000,250000000]
+App Data Sizes: [500000000,100000000]
+Cache Sizes: [120000000,30000000]
+''',
+        const {'com.discord'},
+      );
+      await tester.tap(find.text('Apps'));
+      await tester.pump();
+      expect(find.text('Discord'), findsOneWidget);
+      expect(find.text('com.discord'), findsOneWidget);
+      expect(find.textContaining('Trim All Caches'), findsOneWidget);
     },
     skip: Platform.isWindows,
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
+
+  test('parseDiskstats parses static APK, app data, reclaimable cache, and package validation', () {
+    const sample = '''
+App Size: 500000000
+App Data Size: 900000000
+App Cache Size: 300000000
+Package Names: ["jp.naver.line.android","com.openai.chatgpt","com.android.systemui","com.empty.overlay"]
+App Sizes: [120000000,90000000,290000000,0]
+App Data Sizes: [600000000,200000000,100000000,0]
+Cache Sizes: [250000000,40000000,10000000,0]
+''';
+    final report = AdbClient.parseDiskstats(
+      sample,
+      const {'jp.naver.line.android', 'com.openai.chatgpt'},
+    );
+    expect(report.apps.length, 3); // zero-byte system overlay skipped
+    expect(report.userAppCount, 2);
+    expect(report.totalStaticBytes, 1400000000);
+    expect(report.totalReclaimableBytes, 300000000);
+    expect(report.apps.first.packageName, 'jp.naver.line.android');
+    expect(report.apps.first.displayName, 'LINE');
+    expect(report.apps.first.reclaimableBytes, 250000000);
+    expect(report.apps.first.staticBytes, 720000000);
+    expect(report.apps.first.isUserApp, isTrue);
+
+    final ctrl = CleanupController(adb: AdbClient('adb'), log: (_) {});
+    ctrl.appStorage = report;
+    // Defaults to user apps only
+    expect(ctrl.filteredApps.map((a) => a.packageName), [
+      'jp.naver.line.android',
+      'com.openai.chatgpt',
+    ]);
+    // Include system apps + sort by static APK puts systemui first
+    ctrl.setShowSystemApps(true);
+    ctrl.setAppSort(AppSortMode.app);
+    expect(ctrl.filteredApps.first.packageName, 'com.android.systemui');
+    // Filter by search query
+    ctrl.setAppSearchQuery('chatgpt');
+    expect(ctrl.filteredApps.map((a) => a.displayName), ['ChatGPT']);
+
+    expect(AdbClient.isValidPackageName('com.openai.chatgpt'), isTrue);
+    expect(AdbClient.isValidPackageName('com.foo; rm -rf /'), isFalse);
+  });
 }

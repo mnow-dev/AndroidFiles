@@ -8,11 +8,12 @@ import '../../cleanup_engine.dart';
 import '../../models.dart';
 import '../../os.dart';
 import '../../preview_service.dart';
+import '../cleanup_apps_tab.dart';
 import '../quick_look_dialog.dart';
 import 'mac_dialogs.dart';
 import 'mac_theme.dart';
 
-enum _CleanupTab { proposals, large, duplicates, review }
+enum _CleanupTab { proposals, large, apps, duplicates, review }
 
 /// Proposal A native macOS Space Cleanup studio: storage overview, intelligent
 /// cleanup proposals (DCIM videos, retention windows, backed-up data), large
@@ -295,6 +296,7 @@ class _MacCleanupViewState extends State<MacCleanupView> {
                   items: [
                     (_CleanupTab.proposals, 'Smart Proposals'),
                     (_CleanupTab.large, 'Large Files & Folders'),
+                    (_CleanupTab.apps, 'Apps'),
                     (_CleanupTab.duplicates, 'Duplicates'),
                     (_CleanupTab.review, reviewLabel),
                   ],
@@ -315,46 +317,50 @@ class _MacCleanupViewState extends State<MacCleanupView> {
 
           // --- Main Body ---
           Expanded(
-            child: cleanup.scanning
-                ? _ScanningState(
-                    title: 'Scanning ${app.activeRootPath} on ${device.model.isNotEmpty ? device.model : device.serial}…',
-                    subtitle: 'Indexing file sizes, dates, and comparing against your local backup folder.',
-                  )
-                : cleanup.scanError != null
-                    ? _ErrorState(
-                        message: cleanup.scanError!,
-                        onRetry: () => cleanup.scan(
-                          device.serial,
-                          app.destination.text,
-                          rootPath: app.activeRootPath,
-                        ),
+            child: _tab == _CleanupTab.apps
+                ? CleanupAppsTab(app: app, macStyle: true)
+                : cleanup.scanning
+                    ? _ScanningState(
+                        title: 'Scanning ${app.activeRootPath} on ${device.model.isNotEmpty ? device.model : device.serial}…',
+                        subtitle: 'Indexing file sizes, dates, and comparing against your local backup folder.',
                       )
-                    : !cleanup.hasScan
-                        ? _IdleScanState(
-                            onScan: () => cleanup.scan(
+                    : cleanup.scanError != null
+                        ? _ErrorState(
+                            message: cleanup.scanError!,
+                            onRetry: () => cleanup.scan(
                               device.serial,
                               app.destination.text,
                               rootPath: app.activeRootPath,
                             ),
                           )
-                        : switch (_tab) {
-                            _CleanupTab.proposals =>
-                              _SmartProposalsTab(cleanup: cleanup),
-                            _CleanupTab.large => _LargeFilesTab(
-                                cleanup: cleanup,
-                                onPreview: _openQuickLook,
-                              ),
-                            _CleanupTab.duplicates => _DuplicatesTab(
-                                cleanup: cleanup,
-                                onFind: () =>
-                                    cleanup.findDuplicates(device.serial),
-                                onPreview: _openQuickLook,
-                              ),
-                            _CleanupTab.review => _ReviewTab(
-                                cleanup: cleanup,
-                                onPreview: _openQuickLook,
-                              ),
-                          },
+                        : !cleanup.hasScan
+                            ? _IdleScanState(
+                                onScan: () => cleanup.scan(
+                                  device.serial,
+                                  app.destination.text,
+                                  rootPath: app.activeRootPath,
+                                ),
+                              )
+                            : switch (_tab) {
+                                _CleanupTab.proposals =>
+                                  _SmartProposalsTab(cleanup: cleanup),
+                                _CleanupTab.large => _LargeFilesTab(
+                                    cleanup: cleanup,
+                                    onPreview: _openQuickLook,
+                                  ),
+                                _CleanupTab.apps =>
+                                  CleanupAppsTab(app: app, macStyle: true),
+                                _CleanupTab.duplicates => _DuplicatesTab(
+                                    cleanup: cleanup,
+                                    onFind: () =>
+                                        cleanup.findDuplicates(device.serial),
+                                    onPreview: _openQuickLook,
+                                  ),
+                                _CleanupTab.review => _ReviewTab(
+                                    cleanup: cleanup,
+                                    onPreview: _openQuickLook,
+                                  ),
+                              },
           ),
 
           // --- Sticky Bottom Cleanup Action Bar ---

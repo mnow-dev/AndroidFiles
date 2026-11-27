@@ -13,6 +13,17 @@ import 'tar_extractor.dart';
 
 enum CleanupMediaKind { video, photo, audio, archive, document, other }
 
+/// Sort order for the Clean Up Space → Apps storage table.
+enum AppSortMode {
+  total('Total'),
+  cache('Reclaimable'),
+  data('Data'),
+  app('Static APK');
+
+  final String label;
+  const AppSortMode(this.label);
+}
+
 /// One scanned user file under [rootPath] (e.g. `/sdcard` or `/storage/UUID`).
 class ScannedFile {
   final String relPath; // relative to [rootPath], e.g. "DCIM/Camera/VID_01.mp4"
@@ -417,6 +428,16 @@ class CleanupController extends ChangeNotifier {
   double executionProgress = 0;
   CleanupExecutionSummary? lastSummary;
 
+  // Installed app storage (static APK/data + reclaimable cache)
+  DeviceAppStorageReport? appStorage;
+  bool loadingApps = false;
+  bool actingOnApps = false;
+  String? appStorageError;
+  String? appActionMessage;
+  bool showSystemApps = false;
+  AppSortMode appSort = AppSortMode.total;
+  String appSearchQuery = '';
+
   bool get hasScan =>
       files.isNotEmpty ||
       (_scannedSerial != null && _scannedRootPath == activeRootPath && !scanning);
@@ -437,7 +458,160 @@ class CleanupController extends ChangeNotifier {
     scanError = null;
     lastSummary = null;
     folderFilter = null;
+    appStorage = null;
+    appStorageError = null;
+    appActionMessage = null;
     notifyListeners();
+  }
+
+  void setShowSystemApps(bool v) {
+    if (showSystemApps == v) return;
+    showSystemApps = v;
+    notifyListeners();
+  }
+
+  void setAppSort(AppSortMode v) {
+    if (appSort == v) return;
+    appSort = v;
+    notifyListeners();
+  }
+
+  void setAppSearchQuery(String q) {
+    if (appSearchQuery == q) return;
+    appSearchQuery = q;
+    notifyListeners();
+  }
+
+  void dismissAppActionMessage() {
+    if (appActionMessage == null) return;
+    appActionMessage = null;
+    notifyListeners();
+  }
+
+  /// Filtered and sorted list of installed apps for the Apps tab.
+  List<AppStorageEntry> get filteredApps {
+    final report = appStorage;
+    if (report == null) return const [];
+    final q = appSearchQuery.trim().toLowerCase();
+    final list = report.apps.where((a) {
+      if (!showSystemApps && !a.isUserApp) return false;
+      if (q.isNotEmpty &&
+          !a.displayName.toLowerCase().contains(q) &&
+          !a.packageName.toLowerCase().contains(q)) {
+        return false;
+      }
+      return true;
+    }).toList();
+    list.sort((a, b) => switch (appSort) {
+          AppSortMode.total => b.totalBytes.compareTo(a.totalBytes),
+          AppSortMode.cache => b.cacheBytes.compareTo(a.cacheBytes),
+          AppSortMode.data => b.dataBytes.compareTo(a.dataBytes),
+          AppSortMode.app => b.appBytes.compareTo(a.appBytes),
+        });
+    return list;
+  }
+
+  /// Load per-app storage usage from `dumpsys diskstats`.
+  Future<void> scanApps(String serial) async {
+    if (loadingApps) return;
+    loadingApps = true;
+    appStorageError = null;
+    notifyListeners();
+    try {
+      final report = await adb.appStorageUsage(serial);
+      appStorage = report;
+      log('App storage scan: ${report.apps.length} packages '
+          '(${fmtBytes(report.totalStaticBytes)} static, '
+          '${fmtBytes(report.totalReclaimableBytes)} reclaimable cache)');
+    } catch (e) {
+      appStorageError = '$e';
+      log('App storage scan failed: $e');
+    } finally {
+      loadingApps = false;
+      notifyListeners();
+    }
+  }
+
+  /// Safely trim regenerable app caches across the phone (`pm trim-caches`),
+  /// then re-scan app storage & free space.
+  Future<void> trimAllCaches(String serial) async {
+    if (actingOnApps) return;
+    final beforeCache = appStorage?.totalCacheBytes ?? 0;
+    actingOnApps = true;
+    appActionMessage = null;
+    notifyListeners();
+    try {
+      await adb.trimAllAppCaches(serial);
+      final updated = await adb.appStorageUsage(serial);
+      appStorage = updated;
+      deviceSpace = await adb.storageSpace(serial, activeRootPath) ?? deviceSpace;
+      final freed = (beforeCache - updated.totalCacheBytes).clamp(0, beforeCache);
+      appActionMessage = freed > 0
+          ? 'Trimmed app caches — reclaimed ${fmtBytes(freed)}'
+          : 'App caches trimmed (Android reports ${fmtBytes(updated.totalCacheBytes)} remaining)';
+      log(appActionMessage!);
+    } catch (e) {
+      appActionMessage = 'Trim caches failed: $e';
+      log(appActionMessage!);
+    } finally {
+      actingOnApps = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clear all local data & cache for a single app (`pm clear`).
+  Future<void> clearAppData(String serial, AppStorageEntry app) async {
+    if (actingOnApps) return;
+    actingOnApps = true;
+    appActionMessage = null;
+    notifyListeners();
+    try {
+      await adb.clearAppData(serial, app.packageName);
+      appStorage = await adb.appStorageUsage(serial);
+      deviceSpace = await adb.storageSpace(serial, activeRootPath) ?? deviceSpace;
+      appActionMessage = 'Cleared data & cache for ${app.displayName}';
+      log(appActionMessage!);
+    } catch (e) {
+      appActionMessage = 'Clear data failed: $e';
+      log(appActionMessage!);
+    } finally {
+      actingOnApps = false;
+      notifyListeners();
+    }
+  }
+
+  /// Uninstall a user-installed app (`adb uninstall`).
+  Future<void> uninstallApp(String serial, AppStorageEntry app) async {
+    if (actingOnApps) return;
+    actingOnApps = true;
+    appActionMessage = null;
+    notifyListeners();
+    try {
+      await adb.uninstallApp(serial, app.packageName);
+      appStorage = await adb.appStorageUsage(serial);
+      deviceSpace = await adb.storageSpace(serial, activeRootPath) ?? deviceSpace;
+      appActionMessage =
+          'Uninstalled ${app.displayName} (freed ~${fmtBytes(app.totalBytes)})';
+      log(appActionMessage!);
+    } catch (e) {
+      appActionMessage = 'Uninstall failed: $e';
+      log(appActionMessage!);
+    } finally {
+      actingOnApps = false;
+      notifyListeners();
+    }
+  }
+
+  /// Open an app's Settings → App Info screen on the phone.
+  Future<void> openAppSettings(String serial, AppStorageEntry app) async {
+    try {
+      await adb.openAppSettings(serial, app.packageName);
+      appActionMessage = 'Opened ${app.displayName} App Info on phone';
+      notifyListeners();
+    } catch (e) {
+      appActionMessage = 'Could not open App Info: $e';
+      notifyListeners();
+    }
   }
 
   void setRetention(RetentionWindow v) {
@@ -560,6 +734,7 @@ class CleanupController extends ChangeNotifier {
       final spaceFuture = adb.storageSpace(serial, rootPath);
       final manifestFuture = adb.scanStorage(serial, rootPath);
       final localFuture = _buildLocalBackupIndex(backupDir, rootPath);
+      unawaited(scanApps(serial));
 
       final space = await spaceFuture;
       final deviceMap = await manifestFuture;

@@ -75,6 +75,8 @@ class AppController extends ChangeNotifier {
   AppController(this.settings, {bool startPolling = true}) {
     engine.addListener(notifyListeners);
     engine.addListener(() => KeepAwake.set(engine.isRunning));
+    engine.onFilesProgress = (_) => unawaited(refreshBackupStatuses());
+    engine.onJobFinished = (_) => unawaited(refreshBackupStatuses());
     engine.onDrained = _onQueueDrained;
     drive.addListener(notifyListeners);
     cleanup.addListener(notifyListeners);
@@ -295,8 +297,7 @@ class AppController extends ChangeNotifier {
     _notify('AndroidFiles — queue finished',
         '$done ok, $warn with warnings, $failed failed');
 
-    unawaited(_finalizeSnapshot());
-    unawaited(refreshBackupStatuses());
+    unawaited(_finalizeSnapshot().then((_) => refreshBackupStatuses()));
 
     // Freshly pushed files should show up when the tree is next viewed.
     for (final t in _pendingRestoreTargets) {
