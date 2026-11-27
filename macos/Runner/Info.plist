@@ -28,5 +28,12 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AndroidFiles uses your local network to discover and connect to Android devices over Wireless Debugging (ADB).</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_adb-tls-pairing._tcp</string>
+		<string>_adb-tls-connect._tcp</string>
+	</array>
 </dict>
 </plist>

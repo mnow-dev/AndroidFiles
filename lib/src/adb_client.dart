@@ -603,16 +603,38 @@ class AdbClient {
     return (m.group(1)!, m.group(2)!);
   }
 
+  static bool _isWedgedServerError(String out) {
+    final lower = out.toLowerCase();
+    return lower.contains('protocol fault') ||
+        lower.contains('no route to host') ||
+        lower.contains('cannot connect to daemon');
+  }
+
   /// Pair with a device over Wi-Fi (Android 11+ pairing dialog).
+  /// If a stale/wedged adb daemon returns a protocol fault or local-network
+  /// error, restarts the adb server once and retries automatically.
   Future<String> pair(String hostPort, String code) async {
-    final r = await _run(['pair', hostPort, code], timeout: const Duration(seconds: 60));
-    return '${r.stdout}${r.stderr}'.trim();
+    var r = await _run(['pair', hostPort, code], timeout: const Duration(seconds: 60));
+    var out = '${r.stdout}${r.stderr}'.trim();
+    if (!out.toLowerCase().contains('success') && _isWedgedServerError(out)) {
+      await killServer();
+      r = await _run(['pair', hostPort, code], timeout: const Duration(seconds: 60));
+      out = '${r.stdout}${r.stderr}'.trim();
+    }
+    return out;
   }
 
   /// Connect to a device over Wi-Fi.
+  /// Retries once after restarting a wedged adb server on protocol/route errors.
   Future<String> connect(String hostPort) async {
-    final r = await _run(['connect', hostPort], timeout: const Duration(seconds: 60));
-    return '${r.stdout}${r.stderr}'.trim();
+    var r = await _run(['connect', hostPort], timeout: const Duration(seconds: 60));
+    var out = '${r.stdout}${r.stderr}'.trim();
+    if (!out.toLowerCase().contains('connected') && _isWedgedServerError(out)) {
+      await killServer();
+      r = await _run(['connect', hostPort], timeout: const Duration(seconds: 60));
+      out = '${r.stdout}${r.stderr}'.trim();
+    }
+    return out;
   }
 
   /// Start a device-side tar stream of [path]; caller owns the process.
