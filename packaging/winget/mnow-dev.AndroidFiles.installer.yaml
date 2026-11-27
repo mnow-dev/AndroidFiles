@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 PackageIdentifier: mnow-dev.AndroidFiles
-PackageVersion: 0.1.5
+PackageVersion: 0.2.0
 InstallerType: exe
 Scope: user
 InstallModes:
@@ -13,7 +13,7 @@ InstallerSwitches:
   SilentWithProgress: --silent
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/mnow-dev/AndroidFiles/releases/download/v0.1.5/AndroidFiles-win-Setup.exe
-    InstallerSha256: 0F8C61065F738F836EFACADB73A6D0A0CA28AC9228FAD4C721025DBB50E94CE5
+    InstallerUrl: https://github.com/mnow-dev/AndroidFiles/releases/download/v0.2.0/AndroidFiles-win-Setup.exe
+    InstallerSha256: FD784B654DF173CD7D6D70FA5044EED51FDB7FC571043C84A49C695F39DFEF9B
 ManifestType: installer
 ManifestVersion: 1.6.0

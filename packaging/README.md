@@ -1,11 +1,11 @@
 # Packaging
 
-Manifests for the Windows package managers. Getting into these turns
-"download an unsigned .exe past SmartScreen" into `winget install` /
-`scoop install`, and lists the app in their search indexes.
+Manifests for desktop package managers (Windows Scoop/winget and macOS Homebrew Cask). Getting into these turns
+"download an unsigned binary" into `winget install` /
+`scoop install` / `brew install --cask`, and lists the app in their search indexes.
 
 Update the version and hashes on every release. Hashes come from the release
-assets — the zip publishes its own `.sha256`; compute the installer's with
+assets — the zip and macOS DMG publish their own `.sha256`; compute the Windows installer's with
 `Get-FileHash AndroidFiles-win-Setup.exe -Algorithm SHA256`.
 
 ## Scoop — `scoop/androidfiles.json` (ready)
@@ -28,8 +28,19 @@ Multi-file manifest for `mnow-dev.AndroidFiles`. Before opening a PR to
    `winget install --manifest packaging/winget` in a sandbox.
 2. Validate: `winget validate packaging/winget`.
 3. Fork `microsoft/winget-pkgs`, place the three files under
-   `manifests/m/mnow-dev/AndroidFiles/0.1.5/`, and open a PR. Their CI installs
+   `manifests/m/mnow-dev/AndroidFiles/0.2.0/`, and open a PR. Their CI installs
    it in a sandbox to confirm it works.
+
+## Homebrew Cask — `homebrew/androidfiles.rb` (macOS)
+
+macOS `.dmg` cask for a personal tap (`mnow-dev/homebrew-tap`) or `homebrew/homebrew-cask`.
+To test locally:
+
+```sh
+brew install --cask packaging/homebrew/androidfiles.rb
+```
+
+Because the `.dmg` is not notarized yet, users install with `--no-quarantine` or allow it once in *System Settings → Privacy & Security → Open Anyway*.
 
 ## Chocolatey (not started)
 

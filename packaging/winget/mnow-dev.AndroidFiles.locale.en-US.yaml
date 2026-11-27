@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: mnow-dev.AndroidFiles
-PackageVersion: 0.1.5
+PackageVersion: 0.2.0
 PackageLocale: en-US
 Publisher: mnow-dev
 PublisherUrl: https://github.com/mnow-dev
@@ -8,11 +8,11 @@ PackageName: AndroidFiles
 PackageUrl: https://github.com/mnow-dev/AndroidFiles
 License: MIT
 LicenseUrl: https://github.com/mnow-dev/AndroidFiles/blob/main/LICENSE
-ShortDescription: Fast, free Android phone backups for Windows over ADB.
+ShortDescription: Fast, free Android phone backups & space cleanup over ADB.
 Description: >-
-  AndroidFiles backs up your Android phone to Windows over ADB — several times
-  faster than MTP, incremental, verified, with dated snapshots and a
-  mount-as-a-drive mode. No cloud, no account.
+  AndroidFiles backs up your Android phone over ADB — several times faster
+  than MTP, incremental, verified, with dated snapshots, external microSD
+  card support, Clean Up Space, and a mount-as-a-drive mode. No cloud, no account.
 Moniker: androidfiles
 Tags:
   - android
