@@ -16,11 +16,11 @@ class MainFlutterWindow: NSWindow {
     // Versioned autosave key ensures an older narrower 2-pane frame isn't
     // restored over the wider 3-pane default.
     let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    let defaultH = min(730, max(620, screenFrame.height * 0.76))
+    let defaultH = min(680, max(580, screenFrame.height * 0.72))
     self.setContentSize(NSSize(width: 1080, height: defaultH))
     self.contentMinSize = NSSize(width: 840, height: 520)
     self.center()
-    self.setFrameAutosaveName("AndroidFilesMainWindowV6")
+    self.setFrameAutosaveName("AndroidFilesMainWindowV7")
 
     // Unified transparent titlebar so Flutter renders behind the traffic
     // lights (Finder / Disk Utility style). An empty unified toolbar centers
