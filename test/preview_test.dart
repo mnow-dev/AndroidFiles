@@ -5,6 +5,7 @@ import 'package:android_files/l10n/app_localizations.dart';
 import 'package:android_files/src/adb_client.dart';
 import 'package:android_files/src/app_controller.dart';
 import 'package:android_files/src/models.dart';
+import 'package:android_files/src/os.dart';
 import 'package:android_files/src/preview_service.dart';
 import 'package:android_files/src/settings.dart';
 import 'package:android_files/src/ui/macos/mac_tree_pane.dart';
@@ -121,7 +122,7 @@ void main() {}
 
     test('finds local backup in mirror, nested subfolder, snapshot, and SD-<UUID>', () async {
       // 1. Nested subfolder mirror: <tmp>/Camera/note.md for /sdcard/DCIM/Camera/note.md
-      final nested = File('${tmp.path}/Camera/note.md');
+      final nested = File(localJoin(tmp.path, 'Camera/note.md'));
       await nested.parent.create(recursive: true);
       await nested.writeAsString('# Hello');
       final len = await nested.length();
@@ -142,7 +143,7 @@ void main() {}
       expect(miss, isNull);
 
       // 2. External microSD namespace: <tmp>/SD-1A2B-3C4D/Docs/readme.txt
-      final sdFile = File('${tmp.path}/SD-1A2B-3C4D/Docs/readme.txt');
+      final sdFile = File(localJoin(tmp.path, 'SD-1A2B-3C4D/Docs/readme.txt'));
       await sdFile.parent.create(recursive: true);
       await sdFile.writeAsString('from sd');
       final hitSd = await PreviewService.resolveLocalBackupFile(
