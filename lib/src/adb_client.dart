@@ -83,6 +83,61 @@ class AdbClient {
     }
   }
 
+  /// Live Wi-Fi link speed, band (2.4 / 5 / 6 GHz), and RSSI for [serial].
+  /// Uses `cmd wifi status` (Android 11+) with a `dumpsys wifi` fallback for
+  /// older Android versions. Returns `null` if unavailable or not on Wi-Fi.
+  Future<WifiLinkInfo?> wifiLinkInfo(String serial) async {
+    try {
+      final r = await _shell(
+        serial,
+        "cmd wifi status 2>/dev/null || dumpsys wifi | grep -m1 'mWifiInfo'",
+        timeout: const Duration(seconds: 4),
+      );
+      if (r.exitCode != 0 && (r.stdout as String).trim().isEmpty) return null;
+      return parseWifiLinkInfo(r.stdout as String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Parse `cmd wifi status` or `dumpsys wifi` output into a [WifiLinkInfo].
+  static WifiLinkInfo? parseWifiLinkInfo(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final txMatch =
+        RegExp(r'\bTx Link speed:\s*(-?\d+)\s*Mbps', caseSensitive: false)
+            .firstMatch(raw);
+    final linkMatch =
+        RegExp(r'\bLink speed:\s*(-?\d+)\s*Mbps', caseSensitive: false)
+            .firstMatch(raw);
+    final txSpeed = txMatch == null ? null : int.tryParse(txMatch.group(1)!);
+    final genSpeed =
+        linkMatch == null ? null : int.tryParse(linkMatch.group(1)!);
+    final speed = (txSpeed != null && txSpeed > 0)
+        ? txSpeed
+        : (genSpeed != null && genSpeed > 0 ? genSpeed : null);
+    if (speed == null) return null;
+
+    final freqMatch =
+        RegExp(r'\bFrequency:\s*(\d+)\s*MHz', caseSensitive: false)
+            .firstMatch(raw);
+    final rssiMatch =
+        RegExp(r'\bRSSI:\s*(-?\d+)', caseSensitive: false).firstMatch(raw);
+    final stdMatch =
+        RegExp(r'\bWi-Fi standard:\s*([A-Za-z0-9._-]+)', caseSensitive: false)
+            .firstMatch(raw);
+    final ssidMatch = RegExp(r'\bSSID:\s*"([^"]+)"').firstMatch(raw);
+
+    final freq = freqMatch == null ? null : int.tryParse(freqMatch.group(1)!);
+    final rssi = rssiMatch == null ? null : int.tryParse(rssiMatch.group(1)!);
+    return WifiLinkInfo(
+      linkSpeedMbps: speed,
+      frequencyMhz: (freq != null && freq > 0) ? freq : null,
+      rssiDbm: (rssi != null && rssi < 0 && rssi > -127) ? rssi : null,
+      standard: stdMatch?.group(1),
+      ssid: ssidMatch?.group(1),
+    );
+  }
+
   /// List a directory using toybox ls (stable output format on Android 6+).
   Future<List<RemoteEntry>> list(String serial, String path) async {
     // Trailing slash makes ls list the contents of symlinked dirs (/sdcard

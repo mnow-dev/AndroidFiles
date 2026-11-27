@@ -23,6 +23,72 @@ class AdbDevice {
   int get hashCode => Object.hash(serial, state);
 }
 
+/// Live Wi-Fi link telemetry for a wirelessly connected Android device
+/// (parsed from `adb shell cmd wifi status` / `dumpsys wifi`).
+class WifiLinkInfo {
+  /// Effective link speed in Mbps (prefers Tx link speed since backups upload
+  /// from the phone to the computer).
+  final int linkSpeedMbps;
+  final int? frequencyMhz;
+  final int? rssiDbm;
+  final String? standard;
+  final String? ssid;
+
+  const WifiLinkInfo({
+    required this.linkSpeedMbps,
+    this.frequencyMhz,
+    this.rssiDbm,
+    this.standard,
+    this.ssid,
+  });
+
+  String? get bandLabel {
+    final f = frequencyMhz;
+    if (f == null) return null;
+    if (f >= 5925) return '6 GHz';
+    if (f >= 4900) return '5 GHz';
+    if (f >= 2400) return '2.4 GHz';
+    return null;
+  }
+
+  /// True when the phone is associated on the slower 2.4 GHz band (<3 GHz).
+  bool get isSlow24Ghz => frequencyMhz != null && frequencyMhz! < 3000;
+
+  /// Compact badge label, e.g. `5 GHz · 866 Mbps` or `2.4 GHz · 52 Mbps`.
+  String get shortLabel {
+    final band = bandLabel;
+    return band == null ? '$linkSpeedMbps Mbps' : '$band · $linkSpeedMbps Mbps';
+  }
+
+  /// Hover tooltip explaining link quality and why 2.4 GHz may cap speed.
+  String get detailTooltip {
+    final parts = <String>[
+      ?bandLabel,
+      '$linkSpeedMbps Mbps',
+      if (rssiDbm != null) '$rssiDbm dBm',
+      if (standard != null && standard!.isNotEmpty) standard!,
+    ];
+    final summary = parts.join(' · ');
+    if (isSlow24Ghz) {
+      return 'Wi-Fi ($summary) — 2.4 GHz caps transfer speed; switch to 5 GHz or USB for faster backups';
+    }
+    return 'Wi-Fi link: $summary';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WifiLinkInfo &&
+      other.linkSpeedMbps == linkSpeedMbps &&
+      other.frequencyMhz == frequencyMhz &&
+      other.rssiDbm == rssiDbm &&
+      other.standard == standard &&
+      other.ssid == ssid;
+
+  @override
+  int get hashCode =>
+      Object.hash(linkSpeedMbps, frequencyMhz, rssiDbm, standard, ssid);
+}
+
 class RemoteEntry {
   final String name;
   final String path; // absolute path on device

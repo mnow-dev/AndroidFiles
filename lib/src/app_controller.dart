@@ -36,6 +36,10 @@ class AppController extends ChangeNotifier {
   List<AdbDevice> devices = [];
   AdbDevice? selected;
 
+  /// Live Wi-Fi link speed & band for [selected] when connected wirelessly.
+  WifiLinkInfo? wifiLink;
+  int _wifiPollCounter = 0;
+
   /// Browsable storage volumes on [selected] (internal `/sdcard` plus any
   /// mounted external microSD / USB volumes under `/storage/<UUID>`).
   List<StorageVolume> volumes = const [StorageVolume.internal];
@@ -452,6 +456,7 @@ class AppController extends ChangeNotifier {
       if (selected != null && !found.any((d) => d.serial == selected!.serial)) {
         log('Device ${selected!.label} disconnected');
         selected = null;
+        wifiLink = null;
         volumes = const [StorageVolume.internal];
         activeVolume = StorageVolume.internal;
       }
@@ -468,16 +473,44 @@ class AppController extends ChangeNotifier {
           _resetTree();
           unawaited(expand(activeRootPath));
           unawaited(_loadVolumes(selected!.serial));
+          unawaited(_refreshWifiLink());
         }
+      } else if (selected!.isReady && selected!.isWireless) {
+        // Refresh Wi-Fi link speed every ~12s (4 poll ticks) while wireless.
+        if ((++_wifiPollCounter) % 4 == 0) {
+          unawaited(_refreshWifiLink());
+        }
+      } else if (wifiLink != null) {
+        wifiLink = null;
+        notifyListeners();
       }
       if (changed) notifyListeners();
     } catch (e) {
       if (devices.isNotEmpty || selected != null) {
         devices = [];
         selected = null;
+        wifiLink = null;
         log('adb error: $e');
         notifyListeners();
       }
+    }
+  }
+
+  /// Fetch current Wi-Fi link speed and band for the selected wireless device.
+  Future<void> _refreshWifiLink() async {
+    final dev = selected;
+    if (dev == null || !dev.isReady || !dev.isWireless) {
+      if (wifiLink != null) {
+        wifiLink = null;
+        notifyListeners();
+      }
+      return;
+    }
+    final info = await adb.wifiLinkInfo(dev.serial);
+    if (selected?.serial != dev.serial) return;
+    if (wifiLink != info) {
+      wifiLink = info;
+      notifyListeners();
     }
   }
 
@@ -592,9 +625,11 @@ class AppController extends ChangeNotifier {
     selected = d;
     _rememberDevice(d.serial);
     _resetTree();
+    wifiLink = null;
     notifyListeners();
     unawaited(expand(activeRootPath));
     unawaited(_loadVolumes(d.serial));
+    unawaited(_refreshWifiLink());
   }
 
   /// Discover internal + external storage volumes on [serial].
@@ -658,6 +693,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     unawaited(expand(activeRootPath));
     unawaited(_loadVolumes(selected!.serial));
+    unawaited(_refreshWifiLink());
   }
 
   void _resetTree({bool keepVolume = false}) {

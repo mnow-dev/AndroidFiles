@@ -201,4 +201,35 @@ void main() {
     );
     expect(twoPhones.length, 2);
   });
+
+  test('parseWifiLinkInfo parses 2.4 GHz, 5 GHz, 6 GHz, and dumpsys wifi output', () {
+    const pixel24 =
+        'WifiInfo: SSID: "IkeNet2206", Wi-Fi standard: 11n, RSSI: -61, '
+        'Link speed: 173Mbps, Tx Link speed: 52Mbps, Frequency: 2427MHz';
+    final info24 = AdbClient.parseWifiLinkInfo(pixel24);
+    expect(info24, isNotNull);
+    expect(info24!.linkSpeedMbps, 52); // prefers Tx link speed
+    expect(info24.bandLabel, '2.4 GHz');
+    expect(info24.isSlow24Ghz, isTrue);
+    expect(info24.shortLabel, '2.4 GHz · 52 Mbps');
+    expect(info24.rssiDbm, -61);
+    expect(info24.detailTooltip, contains('2.4 GHz'));
+
+    const wifi6 =
+        'WifiInfo: SSID: "Home5G", Wi-Fi standard: 11ax, RSSI: -48, '
+        'Link speed: 866Mbps, Tx Link speed: 1200Mbps, Frequency: 5200MHz';
+    final info5 = AdbClient.parseWifiLinkInfo(wifi6);
+    expect(info5!.bandLabel, '5 GHz');
+    expect(info5.isSlow24Ghz, isFalse);
+    expect(info5.shortLabel, '5 GHz · 1200 Mbps');
+
+    const wifi6e =
+        'mWifiInfo SSID: "Lab6E", Link speed: 2401Mbps, Frequency: 6175MHz, RSSI: -52';
+    final info6 = AdbClient.parseWifiLinkInfo(wifi6e);
+    expect(info6!.bandLabel, '6 GHz');
+    expect(info6.shortLabel, '6 GHz · 2401 Mbps');
+
+    expect(AdbClient.parseWifiLinkInfo('Wifi is disabled'), isNull);
+    expect(AdbClient.parseWifiLinkInfo('Link speed: -1Mbps'), isNull);
+  });
 }

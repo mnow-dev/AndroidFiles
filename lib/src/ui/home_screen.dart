@@ -225,6 +225,8 @@ class _WinSidebar extends StatelessWidget {
                       device: d,
                       selected: app.selected?.serial == d.serial,
                       parallelStreams: app.settings.parallelStreams,
+                      wifiLink:
+                          app.selected?.serial == d.serial ? app.wifiLink : null,
                       onTap: d.isReady ? () => app.selectDevice(d) : null,
                     ),
                 const SizedBox(height: 16),
@@ -455,12 +457,14 @@ class _SidebarDeviceTile extends StatefulWidget {
   final AdbDevice device;
   final bool selected;
   final int parallelStreams;
+  final WifiLinkInfo? wifiLink;
   final VoidCallback? onTap;
 
   const _SidebarDeviceTile({
     required this.device,
     required this.selected,
     required this.parallelStreams,
+    this.wifiLink,
     required this.onTap,
   });
 
@@ -547,6 +551,36 @@ class _SidebarDeviceTileState extends State<_SidebarDeviceTile> {
                         color: d.isReady ? p.textSecondary : p.warnFg,
                       ),
                     ),
+                    if (widget.wifiLink != null) ...[
+                      const SizedBox(height: 4),
+                      Tooltip(
+                        message: widget.wifiLink!.detailTooltip,
+                        child: WinPill(
+                          label: widget.wifiLink!.shortLabel,
+                          color: widget.wifiLink!.isSlow24Ghz
+                              ? (p.dark
+                                  ? const Color(0xFFFFCA62)
+                                  : const Color(0xFF8A4300))
+                              : (p.dark
+                                  ? const Color(0xFF7AF2A3)
+                                  : const Color(0xFF0B5D2C)),
+                          background: widget.wifiLink!.isSlow24Ghz
+                              ? (p.dark
+                                  ? const Color(0xFF3A2A12)
+                                  : const Color(0xFFFEECC8))
+                              : (p.dark
+                                  ? const Color(0xFF173624)
+                                  : const Color(0xFFD6F5E3)),
+                          borderColor: widget.wifiLink!.isSlow24Ghz
+                              ? (p.dark
+                                  ? const Color(0xFF6B4D1E)
+                                  : const Color(0xFFF6CE83))
+                              : (p.dark
+                                  ? const Color(0xFF285E3D)
+                                  : const Color(0xFFA3E4BF)),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
