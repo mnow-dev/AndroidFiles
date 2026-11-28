@@ -930,6 +930,53 @@ class AdbClient {
     }
   }
 
+  /// Ensure [deviceDir] exists on the device (`mkdir -p`).
+  Future<void> ensureDeviceDir(String serial, String deviceDir) async {
+    final r = await _shell(serial, 'mkdir -p ${shellQuote(deviceDir)}');
+    if (r.exitCode != 0) {
+      throw AdbException(
+          'mkdir -p $deviceDir failed (${r.exitCode}): ${(r.stderr as String).trim()}');
+    }
+  }
+
+  /// Push a single local file to an exact [devicePath] on the device.
+  Future<void> pushFile(
+    String serial,
+    String localPath,
+    String devicePath,
+  ) async {
+    final r = await _run(
+      ['-s', serial, 'push', localPath, devicePath],
+      timeout: const Duration(minutes: 5),
+    );
+    if (r.exitCode != 0) {
+      final msg = '${r.stderr}${r.stdout}'.trim();
+      throw AdbException('adb push failed (${r.exitCode}): $msg');
+    }
+  }
+
+  /// Size+mtime manifest of every regular file strictly inside [deviceDir],
+  /// keyed by path relative to [deviceDir] (e.g. `Albums/song.mp3`).
+  /// Returns an empty map if [deviceDir] does not exist yet on the phone.
+  Future<Map<String, FileMeta>> folderManifest(
+    String serial,
+    String deviceDir,
+  ) async {
+    final clean = deviceDir.endsWith('/') && deviceDir.length > 1
+        ? deviceDir.substring(0, deviceDir.length - 1)
+        : deviceDir;
+    final r = await _shell(
+      serial,
+      "[ -d ${shellQuote(clean)} ] || exit 0; "
+      "find ${shellQuote(clean)} -type f -exec stat -c '%s|%Y|%n' {} +",
+      timeout: const Duration(minutes: 5),
+    );
+    if (r.exitCode != 0) {
+      throw AdbException('folderManifest of $clean failed: ${r.stderr}'.trim());
+    }
+    return parseDeviceManifest(r.stdout as String, clean);
+  }
+
   static String dirname(String p) {
     final i = p.lastIndexOf('/');
     return i <= 0 ? '/' : p.substring(0, i);

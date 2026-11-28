@@ -10,6 +10,7 @@ import 'mac_cleanup_view.dart';
 import 'mac_dialogs.dart';
 import 'mac_inspector_pane.dart';
 import 'mac_sidebar.dart';
+import 'mac_sync_view.dart';
 import 'mac_theme.dart';
 import 'mac_tree_pane.dart';
 
@@ -91,31 +92,33 @@ class _MacHomeScreenState extends State<MacHomeScreen> {
                     children: [
                       _MacUnifiedToolbar(app: app, mode: _mode),
                       Expanded(
-                        child: _mode == MacWorkspaceMode.cleanup
-                            ? MacCleanupView(app: app)
-                            : LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final maxInsp = (constraints.maxWidth - 260)
-                                      .clamp(290.0, 440.0);
-                                  final inspW =
-                                      _inspectorWidth.clamp(290.0, maxInsp);
-                                  return Row(
-                                    children: [
-                                      Expanded(child: MacTreePane(app: app)),
-                                      _MacVerticalSplitHandle(
-                                        onDrag: (dx) => setState(() {
-                                          _inspectorWidth =
-                                              (inspW - dx).clamp(290.0, maxInsp);
-                                        }),
-                                      ),
-                                      SizedBox(
-                                        width: inspW,
-                                        child: MacInspectorPane(app: app),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
+                        child: switch (_mode) {
+                          MacWorkspaceMode.cleanup => MacCleanupView(app: app),
+                          MacWorkspaceMode.sync => MacSyncView(app: app),
+                          MacWorkspaceMode.backup => LayoutBuilder(
+                              builder: (context, constraints) {
+                                final maxInsp = (constraints.maxWidth - 260)
+                                    .clamp(290.0, 440.0);
+                                final inspW =
+                                    _inspectorWidth.clamp(290.0, maxInsp);
+                                return Row(
+                                  children: [
+                                    Expanded(child: MacTreePane(app: app)),
+                                    _MacVerticalSplitHandle(
+                                      onDrag: (dx) => setState(() {
+                                        _inspectorWidth =
+                                            (inspW - dx).clamp(290.0, maxInsp);
+                                      }),
+                                    ),
+                                    SizedBox(
+                                      width: inspW,
+                                      child: MacInspectorPane(app: app),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                        },
                       ),
                       if (app.showLog) _MacConsoleDrawer(app: app),
                     ],
@@ -234,9 +237,18 @@ class _MacHomeScreenState extends State<MacHomeScreen> {
                           setState(() => _mode = MacWorkspaceMode.backup),
                     ),
                     PlatformMenuItem(
-                      label: 'Clean Up Space',
+                      label: 'Folder Sync',
                       shortcut: const SingleActivator(
                         LogicalKeyboardKey.digit2,
+                        meta: true,
+                      ),
+                      onSelected: () =>
+                          setState(() => _mode = MacWorkspaceMode.sync),
+                    ),
+                    PlatformMenuItem(
+                      label: 'Clean Up Space',
+                      shortcut: const SingleActivator(
+                        LogicalKeyboardKey.digit3,
                         meta: true,
                       ),
                       onSelected: () =>
@@ -376,16 +388,18 @@ class _MacUnifiedToolbar extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      mode == MacWorkspaceMode.cleanup
-                          ? (app.activeVolume.isExternal
-                              ? 'Clean Up Space · ${app.activeVolume.label}'
-                              : 'Clean Up Space')
-                          : app.activeRootPath,
+                      switch (mode) {
+                        MacWorkspaceMode.cleanup => app.activeVolume.isExternal
+                            ? 'Clean Up Space · ${app.activeVolume.label}'
+                            : 'Clean Up Space',
+                        MacWorkspaceMode.sync => 'Folder Sync',
+                        MacWorkspaceMode.backup => app.activeRootPath,
+                      },
                       style: TextStyle(
                         fontSize: 12,
-                        fontFamily: mode == MacWorkspaceMode.cleanup
-                            ? null
-                            : macMonoFont,
+                        fontFamily: mode == MacWorkspaceMode.backup
+                            ? macMonoFont
+                            : null,
                         color: p.textSecondary,
                       ),
                     ),

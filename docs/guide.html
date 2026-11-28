@@ -129,6 +129,7 @@
       <li><a href="#clutter">Skip clutter</a></li>
       <li><a href="#layouts">Mirror &amp; Snapshot layouts</a></li>
       <li><a href="#verify">Verification</a></li>
+      <li><a href="#sync">Selective Folder Sync</a></li>
       <li><a href="#cleanup">Clean Up Space &amp; Apps</a></li>
       <li><a href="#drive">The Explorer drive (Windows)</a></li>
       <li><a href="#restore">Restoring files</a></li>
@@ -145,10 +146,10 @@
       On <strong>Windows</strong>, download <code>AndroidFiles-win-Setup.exe</code>
       from the <a href="https://github.com/mnow-dev/AndroidFiles/releases/latest">releases page</a>
       and run it (or grab the portable ZIP).
-      On <strong>macOS</strong> (Apple silicon &amp; Intel), download
-      <code>AndroidFiles-v*-macos.dmg</code> from the releases page and drag
-      <code>AndroidFiles.app</code> to <em>Applications</em> (or build from
-      source with <code>flutter build macos --release</code>).</li>
+      On <strong>macOS</strong> (Apple silicon &amp; Intel), install via
+      Homebrew (<code>brew install --cask mnow-dev/tap/androidfiles</code>), or
+      download <code>AndroidFiles-v*-macos.dmg</code> from the releases page and
+      drag <code>AndroidFiles.app</code> to <em>Applications</em>.</li>
     <li><strong>Turn on USB debugging.</strong> On the phone, open
       <kbd>Settings</kbd> &rarr; <kbd>About phone</kbd> and tap <em>Build
       number</em> seven times to unlock <em>Developer options</em>, then enable
@@ -320,9 +321,32 @@
       in Options — every run is then deep-verified as soon as it finishes.</li>
   </ul>
 
+  <h2 id="sync"><span class="em">🔄</span>Selective Folder Sync</h2>
+  <p>Switch to <strong>Folder Sync</strong> in the sidebar (or press
+  <kbd>⌘2</kbd> on macOS) to keep specific folders automatically in sync
+  between your computer and phone:</p>
+  <ul>
+    <li><strong>Push &rarr; Phone</strong> — ideal for Music, Books, or
+      Podcasts; new and edited files on your computer are pushed straight to
+      the phone.</li>
+    <li><strong>Pull &larr; Phone</strong> — mirrors new and updated files
+      from a phone folder onto your computer.</li>
+    <li><strong>Two-Way Sync (&rlarr;)</strong> — ideal for Obsidian vaults,
+      Notes, or Documents; tracks a lightweight baseline manifest so edits flow
+      in both directions. If the same file changed on both devices, AndroidFiles
+      keeps both copies (<code>name (phone-conflict YYYY-MM-DD).ext</code>) so
+      nothing is ever silently overwritten.</li>
+    <li><strong>Safe by default</strong> — click <strong>Preview</strong> for
+      a dry-run list of exact changes before syncing. Deletions never propagate
+      unless <em>Mirror deletions</em> is turned on per pair, and any sync that
+      would remove more than 20% of a folder prompts for confirmation.</li>
+    <li><strong>Auto-sync on connect</strong> — opt a pair in to sync
+      automatically whenever your phone connects over USB or Wi-Fi.</li>
+  </ul>
+
   <h2 id="cleanup"><span class="em">✨</span>Clean Up Space &amp; Apps</h2>
   <p>Switch to <strong>Clean Up Space</strong> in the sidebar (or press
-  <kbd>⌘2</kbd> on macOS) to scan your phone storage and safely reclaim space:</p>
+  <kbd>⌘3</kbd> on macOS) to scan your phone storage and safely reclaim space:</p>
   <ul>
     <li><strong>Smart Proposals</strong> — highlights high-impact targets like
       <em>DCIM Videos Only</em> (leaving all photos on your phone),

@@ -165,3 +165,22 @@ jobs:
             "AndroidFiles-$v-macos.dmg" \
             "AndroidFiles-$v-macos.dmg.sha256" \
             --clobber
+
+      - name: Update Homebrew tap (optional, requires HOMEBREW_TAP_TOKEN)
+        if: ${{ env.TAP_TOKEN != '' }}
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          v="${{ github.ref_name }}"
+          ver="${v#v}"
+          sha="$(awk '{print $1}' "AndroidFiles-$v-macos.dmg.sha256")"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/mnow-dev/homebrew-tap.git" tap
+          sed -i '' -E "s/^  version \".*\"/  version \"$ver\"/" tap/Casks/androidfiles.rb
+          sed -i '' -E "s/^  sha256 \".*\"/  sha256 \"$sha\"/" tap/Casks/androidfiles.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "Update androidfiles to $v"
+            git push origin main
+          fi

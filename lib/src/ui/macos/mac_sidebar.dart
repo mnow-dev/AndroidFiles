@@ -9,7 +9,7 @@ import '../../settings.dart';
 import 'mac_dialogs.dart';
 import 'mac_theme.dart';
 
-enum MacWorkspaceMode { backup, cleanup }
+enum MacWorkspaceMode { backup, sync, cleanup }
 
 /// Proposal A left sidebar: integrated traffic-light header, Workspace mode
 /// switcher (Back Up / Clean Up Space), connected Devices list, and saved
@@ -56,6 +56,16 @@ class MacSidebar extends StatelessWidget {
                   busy: app.engine.isRunning,
                   selected: mode == MacWorkspaceMode.backup,
                   onTap: () => onModeChanged(MacWorkspaceMode.backup),
+                ),
+                _NavModeRow(
+                  icon: CupertinoIcons.arrow_2_circlepath,
+                  label: 'Folder Sync',
+                  busy: app.sync.busy,
+                  badge: app.sync.pairs.isNotEmpty
+                      ? '${app.sync.pairs.length}'
+                      : null,
+                  selected: mode == MacWorkspaceMode.sync,
+                  onTap: () => onModeChanged(MacWorkspaceMode.sync),
                 ),
                 _NavModeRow(
                   icon: CupertinoIcons.sparkles,

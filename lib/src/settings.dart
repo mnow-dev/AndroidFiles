@@ -5,6 +5,7 @@ import 'adb_installer.dart';
 import 'manifest.dart';
 import 'models.dart';
 import 'os.dart';
+import 'sync_engine.dart' show SyncPair;
 
 /// A saved backup configuration for one-click re-runs.
 class Profile {
@@ -110,6 +111,9 @@ class Settings {
 
   final List<Profile> profiles;
 
+  /// Selective folder sync pairs (computer ↔ phone).
+  final List<SyncPair> syncPairs;
+
   /// Optional override file for tests; when null, saves go to `appDataDir()`.
   final File? storageFile;
 
@@ -136,10 +140,12 @@ class Settings {
     this.parallelStreams = 8,
     List<String>? clutterPatterns,
     List<Profile>? profiles,
+    List<SyncPair>? syncPairs,
     this.storageFile,
   })  : driveExePath = driveExePath ?? defaultDriveExePath(),
         clutterPatterns = clutterPatterns ?? List.of(defaultClutterPatterns),
-        profiles = profiles ?? [];
+        profiles = profiles ?? [],
+        syncPairs = syncPairs ?? [];
 
   /// In a shipped package AdbDrive.exe sits in drive\ next to the app exe. In
   /// development it lives in the repo's drive\publish, which `flutter run`
@@ -203,6 +209,9 @@ class Settings {
         for (final p in (json['profiles'] as List? ?? const [])) {
           settings.profiles.add(Profile.fromJson(p as Map<String, dynamic>));
         }
+        for (final s in (json['syncPairs'] as List? ?? const [])) {
+          settings.syncPairs.add(SyncPair.fromJson(s as Map<String, dynamic>));
+        }
       }
     } catch (_) {
       // Corrupt settings are not worth failing startup over.
@@ -236,6 +245,7 @@ class Settings {
       'parallelStreams': parallelStreams,
       'clutterPatterns': clutterPatterns,
       'profiles': [for (final p in profiles) p.toJson()],
+      'syncPairs': [for (final s in syncPairs) s.toJson()],
     });
     final f = storageFile ?? _file();
     _saveChain = _saveChain.catchError((_) {}).then((_) async {

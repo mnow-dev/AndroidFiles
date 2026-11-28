@@ -18,6 +18,7 @@ import 'os.dart';
 import 'preview_service.dart';
 import 'selection.dart';
 import 'settings.dart';
+import 'sync_engine.dart';
 import 'update_checker.dart';
 import 'updater.dart';
 
@@ -30,6 +31,8 @@ class AppController extends ChangeNotifier {
   late final DriveManager drive = DriveManager(settings: settings, log: log);
   late final CleanupController cleanup =
       CleanupController(adb: adb, log: log);
+  late final SyncController sync =
+      SyncController(adb: adb, settings: settings, log: log);
   late final PreviewService preview = PreviewService(adb: adb, log: log);
 
   static const rootPath = '/sdcard';
@@ -85,6 +88,7 @@ class AppController extends ChangeNotifier {
     engine.onDrained = _onQueueDrained;
     drive.addListener(notifyListeners);
     cleanup.addListener(notifyListeners);
+    sync.addListener(notifyListeners);
     destination.addListener(_onDestinationChanged);
     if (startPolling) {
       unawaited(_ensureAdb());
@@ -401,6 +405,7 @@ class AppController extends ChangeNotifier {
     _destSaveDebounce?.cancel();
     _qrTimer?.cancel();
     engine.cancelAll();
+    sync.cancel();
     unawaited(drive.unmount());
     unawaited(preview.clearCache());
   }
@@ -506,6 +511,7 @@ class AppController extends ChangeNotifier {
           unawaited(expand(activeRootPath));
           unawaited(_loadVolumes(selected!.serial));
           unawaited(_refreshWifiLink());
+          unawaited(sync.runAutoSyncForDevice(selected!));
         }
       } else if (selected!.isReady && selected!.isWireless) {
         // Refresh Wi-Fi link speed every ~12s (4 poll ticks) while wireless.

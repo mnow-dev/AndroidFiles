@@ -10,9 +10,10 @@ import 'dialogs.dart';
 import 'queue_panel.dart';
 import 'tree_panel.dart';
 import 'win_cleanup_view.dart';
+import 'win_sync_view.dart';
 import 'win_theme.dart';
 
-enum WinWorkspaceMode { backup, cleanup }
+enum WinWorkspaceMode { backup, sync, cleanup }
 
 /// Windows 11 Hybrid Fluent workspace:
 ///   • Left Mica navigation pane (Workspace, Device, Profiles, Explorer Drive)
@@ -108,42 +109,44 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _WinContextTopBar(app: app, mode: _mode),
                     Expanded(
-                      child: _mode == WinWorkspaceMode.cleanup
-                          ? WinCleanupView(app: app)
-                          : Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final total = constraints.maxWidth;
-                                  final minLeft = 320.0.clamp(0.0, total * 0.6);
-                                  final maxLeft =
-                                      (total - 330).clamp(minLeft, total);
-                                  final leftWidth = (total * _split.clamp(0.45, 0.72))
-                                      .clamp(minLeft, maxLeft);
-                                  return Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      SizedBox(
-                                        width: leftWidth,
-                                        child: TreePanel(app: app),
+                      child: switch (_mode) {
+                        WinWorkspaceMode.cleanup => WinCleanupView(app: app),
+                        WinWorkspaceMode.sync => WinSyncView(app: app),
+                        WinWorkspaceMode.backup => Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final total = constraints.maxWidth;
+                                final minLeft = 320.0.clamp(0.0, total * 0.6);
+                                final maxLeft =
+                                    (total - 330).clamp(minLeft, total);
+                                final leftWidth = (total * _split.clamp(0.45, 0.72))
+                                    .clamp(minLeft, maxLeft);
+                                return Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    SizedBox(
+                                      width: leftWidth,
+                                      child: TreePanel(app: app),
+                                    ),
+                                    _SplitHandle(
+                                      onDrag: (dx) => setState(
+                                        () => _split = ((leftWidth + dx) / total)
+                                            .clamp(0.35, 0.75),
                                       ),
-                                      _SplitHandle(
-                                        onDrag: (dx) => setState(
-                                          () => _split = ((leftWidth + dx) / total)
-                                              .clamp(0.35, 0.75),
-                                        ),
-                                        onDragEnd: () {
-                                          app.settings.splitRatio = _split;
-                                          app.settings.save();
-                                        },
-                                      ),
-                                      Expanded(child: QueuePanel(app: app)),
-                                    ],
-                                  );
-                                },
-                              ),
+                                      onDragEnd: () {
+                                        app.settings.splitRatio = _split;
+                                        app.settings.save();
+                                      },
+                                    ),
+                                    Expanded(child: QueuePanel(app: app)),
+                                  ],
+                                );
+                              },
                             ),
+                          ),
+                      },
                     ),
                     if (app.showLog) _LogPane(app: app),
                   ],
@@ -199,6 +202,16 @@ class _WinSidebar extends StatelessWidget {
                   selected: mode == WinWorkspaceMode.backup,
                   busy: app.engine.isRunning,
                   onTap: () => onModeChanged(WinWorkspaceMode.backup),
+                ),
+                _SidebarNavTile(
+                  icon: FluentIcons.sync,
+                  label: 'Folder Sync',
+                  selected: mode == WinWorkspaceMode.sync,
+                  busy: app.sync.busy,
+                  badge: app.sync.pairs.isNotEmpty
+                      ? '${app.sync.pairs.length}'
+                      : null,
+                  onTap: () => onModeChanged(WinWorkspaceMode.sync),
                 ),
                 _SidebarNavTile(
                   icon: FluentIcons.broom,

@@ -55,6 +55,11 @@ transfer over ADB — saturating the USB link — and verifies what landed.
   writable mode (off by default, guarded by a warning)
 - **Restore** — drag files from Explorer or Finder onto the app to push
   them back to the phone
+- **Selective Folder Sync** — keep chosen computer ↔ phone folder pairs
+  (like Music, Books, or Obsidian vaults) synced automatically with
+  **Push → Phone**, **Pull ← Phone**, or **Two-Way** modes, dry-run change
+  previews, non-destructive conflict copies, delete protection, and optional
+  **Auto-sync when phone connects**
 - **Profiles & scheduling** — save folder selections, re-run in one click,
   or schedule daily backups via Windows Task Scheduler or macOS `launchd`
   with desktop notifications
@@ -109,10 +114,16 @@ accept the prompt. (Or pair wirelessly via the Wi-Fi button — no cable.)
 
 AndroidFiles runs natively on macOS (Apple silicon and Intel) with a
 dedicated macOS 3-pane Finder & Inspector UI, native menu bar shortcuts
-(`⌘1`/`⌘2` workspaces, `⌘B` backup, `⌘,` settings), and the **Clean Up
-Space** workspace. Download `AndroidFiles-v*-macos.dmg` from
-[Releases](../../releases/latest) and drag `AndroidFiles.app`
-to Applications, or build from source (see [Building from source](#building-from-source)).
+(`⌘1`/`⌘2`/`⌘3` workspaces, `⌘B` backup, `⌘,` settings), **Folder Sync**, and
+the **Clean Up Space** workspace. Install via Homebrew:
+
+```bash
+brew install --cask mnow-dev/tap/androidfiles
+```
+
+Or download `AndroidFiles-v*-macos.dmg` from [Releases](../../releases/latest)
+and drag `AndroidFiles.app` to Applications, or build from source (see
+[Building from source](#building-from-source)).
 Backups, incremental runs, external microSD cards, snapshots, verify, restore,
 wireless pairing (via native Bonjour), profiles, and scheduling all work as on
 Windows; the WinFsp Explorer drive and Velopack in-app updates are Windows-only.
