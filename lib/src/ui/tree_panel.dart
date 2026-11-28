@@ -7,6 +7,7 @@ import '../app_controller.dart';
 import '../backup_engine.dart' show fmtBytes;
 import '../models.dart';
 import '../preview_service.dart';
+import '../tree_filter.dart';
 import 'dialogs.dart';
 import 'quick_look_dialog.dart';
 import 'win_theme.dart';
@@ -26,14 +27,22 @@ class TreePanel extends StatefulWidget {
 class _TreePanelState extends State<TreePanel> {
   AppController get app => widget.app;
   bool _dragging = false;
+  bool _onlyUnbackedUp = false;
   final _scroll = ScrollController();
   final _treeFocus = FocusNode();
+  final _searchController = TextEditingController();
   String? _focusedFilePath;
+
+  TreeFilter get _filter => TreeFilter(
+        query: _searchController.text,
+        onlyUnbackedUp: _onlyUnbackedUp,
+      );
 
   @override
   void dispose() {
     _scroll.dispose();
     _treeFocus.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -126,9 +135,11 @@ class _TreePanelState extends State<TreePanel> {
     }
 
     final root = app.activeRootPath;
+    final filter = _filter;
     final rows = <Widget>[];
-    _buildRows(context, root, 0, rows);
+    _buildRows(context, root, 0, rows, filter: filter);
     final rootItems = app.children[root]?.length ?? 0;
+    final isLoadingRoot = app.loading.contains(root);
 
     return Focus(
       focusNode: _treeFocus,
@@ -201,6 +212,99 @@ class _TreePanelState extends State<TreePanel> {
                   ],
                 ),
               ),
+              // Search & status filter strip
+              Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: p.cardBg,
+                  border: Border(
+                    bottom: BorderSide(color: p.borderSoft, width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 28,
+                        child: TextBox(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          placeholder: 'Filter files or folders…',
+                          style: const TextStyle(fontSize: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          prefix: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Icon(
+                              FluentIcons.search,
+                              size: 12,
+                              color: p.textTertiary,
+                            ),
+                          ),
+                          suffix: _searchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: Icon(
+                                    FluentIcons.chrome_close,
+                                    size: 10,
+                                    color: p.textTertiary,
+                                  ),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {});
+                                  },
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message:
+                          'Show only items not yet backed up, modified, or partial',
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => setState(
+                            () => _onlyUnbackedUp = !_onlyUnbackedUp,
+                          ),
+                          child: Container(
+                            height: 26,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: _onlyUnbackedUp
+                                  ? p.accentSoft
+                                  : p.cardSubBg,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: _onlyUnbackedUp
+                                    ? p.accent.withValues(alpha: 0.55)
+                                    : p.border,
+                                width: 1,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Not backed up',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: _onlyUnbackedUp
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                                color: _onlyUnbackedUp
+                                    ? p.accentSoftFg
+                                    : p.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // Column header row (Proposal B): Folder / Name | Last Modified | Backup Status
               Container(
                 height: 30,
@@ -249,24 +353,53 @@ class _TreePanelState extends State<TreePanel> {
                 ),
               ),
               Expanded(
-                child: RawScrollbar(
-                  controller: _scroll,
-                  thumbVisibility: true,
-                  interactive: true,
-                  thickness: 7,
-                  minThumbLength: 48,
-                  radius: const Radius.circular(4),
-                  thumbColor: p.textTertiary.withValues(alpha: 0.35),
-                  child: ScrollConfiguration(
-                    behavior: ScrollConfiguration.of(context)
-                        .copyWith(scrollbars: false),
-                    child: ListView(
-                      controller: _scroll,
-                      padding: const EdgeInsets.only(bottom: 4),
-                      children: rows,
-                    ),
-                  ),
-                ),
+                child: filter.isActive && rows.isEmpty && !isLoadingRoot
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              FluentIcons.search,
+                              size: 22,
+                              color: p.textTertiary,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'No matching files or folders',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: p.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Button(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _onlyUnbackedUp = false);
+                              },
+                              child: const Text('Clear filter'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RawScrollbar(
+                        controller: _scroll,
+                        thumbVisibility: true,
+                        interactive: true,
+                        thickness: 7,
+                        minThumbLength: 48,
+                        radius: const Radius.circular(4),
+                        thumbColor: p.textTertiary.withValues(alpha: 0.35),
+                        child: ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context)
+                              .copyWith(scrollbars: false),
+                          child: ListView(
+                            controller: _scroll,
+                            padding: const EdgeInsets.only(bottom: 4),
+                            children: rows,
+                          ),
+                        ),
+                      ),
               ),
               // Bottom drop-zone & item count strip
               Container(
@@ -295,7 +428,17 @@ class _TreePanelState extends State<TreePanel> {
                         ),
                       ),
                     ),
-                    if (rootItems > 0) ...[
+                    if (filter.isActive) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${rows.length} matching',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: p.accentSoftFg,
+                          fontFeatures: winTabularFigures,
+                        ),
+                      ),
+                    ] else if (rootItems > 0) ...[
                       const SizedBox(width: 8),
                       Text(
                         '$rootItems items',
@@ -321,8 +464,10 @@ class _TreePanelState extends State<TreePanel> {
     BuildContext context,
     String path,
     int depth,
-    List<Widget> out,
-  ) {
+    List<Widget> out, {
+    required TreeFilter filter,
+    bool ancestorMatchedQuery = false,
+  }) {
     if (!app.expanded.contains(path)) return;
     if (app.loading.contains(path)) {
       out.add(Padding(
@@ -337,6 +482,14 @@ class _TreePanelState extends State<TreePanel> {
       return;
     }
     for (final e in app.children[path] ?? const <RemoteEntry>[]) {
+      if (!filter.matches(
+        e,
+        statuses: app.entryBackupStatus,
+        children: app.children,
+        ancestorMatchedQuery: ancestorMatchedQuery,
+      )) {
+        continue;
+      }
       out.add(_EntryRow(
         app: app,
         entry: e,
@@ -350,7 +503,17 @@ class _TreePanelState extends State<TreePanel> {
             : null,
         onQuickLook: !e.isDir ? () => _openQuickLook(e, path) : null,
       ));
-      if (e.isDir) _buildRows(context, e.path, depth + 1, out);
+      if (e.isDir) {
+        _buildRows(
+          context,
+          e.path,
+          depth + 1,
+          out,
+          filter: filter,
+          ancestorMatchedQuery:
+              ancestorMatchedQuery || filter.nameMatchesQuery(e),
+        );
+      }
     }
   }
 }

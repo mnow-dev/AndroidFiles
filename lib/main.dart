@@ -32,8 +32,10 @@ Future<void> main(List<String> args) async {
     // chosen volumes), so tell file_picker not to reject missing sandbox
     // user-selected file entitlements when opening NSOpenPanel.
     await FilePicker.skipEntitlementsChecks();
+  } else {
+    // macOS uses native UNUserNotificationCenter via androidfiles/notifications.
+    await localNotifier.setup(appName: 'AndroidFiles');
   }
-  await localNotifier.setup(appName: 'AndroidFiles');
   final settings = await Settings.load();
   // Get out of the install dir (Velopack launches us in current\). Every child
   // inherits our working directory, and the adb server outlives us: left in

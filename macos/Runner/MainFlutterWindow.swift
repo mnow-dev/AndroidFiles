@@ -1,11 +1,13 @@
 import Cocoa
 import FlutterMacOS
 import QuickLookUI
+import UserNotifications
 
 class MainFlutterWindow: NSWindow {
   /// Held while a backup runs; see lib/src/keep_awake.dart.
   private var backupActivity: NSObjectProtocol?
   private var quickLookController: NativeQuickLookWindowController?
+  private var notificationHelper: MacNotificationHelper?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -90,6 +92,27 @@ class MainFlutterWindow: NSWindow {
       case "close":
         ql.closeWindow()
         result(true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    let notifChannel = FlutterMethodChannel(
+      name: "androidfiles/notifications",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    let notifHelper = MacNotificationHelper()
+    self.notificationHelper = notifHelper
+    notifChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "show":
+        if let args = call.arguments as? [String: Any] {
+          let title = (args["title"] as? String) ?? "AndroidFiles"
+          let body = (args["body"] as? String) ?? ""
+          notifHelper.show(title: title, body: body)
+          result(true)
+        } else {
+          result(false)
+        }
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -521,6 +544,47 @@ private final class NativeQuickLookWindowController: NSObject, NSWindowDelegate 
       NSWorkspace.shared.open(URL(fileURLWithPath: path))
     } else {
       channel.invokeMethod("onOpenExternal", arguments: nil)
+    }
+  }
+}
+
+/// Native macOS notification delivery via `UNUserNotificationCenter` (replaces
+/// the deprecated `NSUserNotification` API used by `local_notifier`).
+private final class MacNotificationHelper: NSObject, UNUserNotificationCenterDelegate {
+  private var delegateInstalled = false
+
+  func show(title: String, body: String) {
+    // UNUserNotificationCenter.current() throws an NSInternalInconsistencyException
+    // if invoked from an unbundled process without a bundle identifier.
+    guard Bundle.main.bundleIdentifier != nil else { return }
+    let center = UNUserNotificationCenter.current()
+    if !delegateInstalled {
+      center.delegate = self
+      delegateInstalled = true
+    }
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+      guard granted else { return }
+      let content = UNMutableNotificationContent()
+      content.title = title
+      content.body = body
+      content.sound = .default
+      let request = UNNotificationRequest(
+        identifier: UUID().uuidString,
+        content: content,
+        trigger: nil)
+      center.add(request, withCompletionHandler: nil)
+    }
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    if #available(macOS 11.0, *) {
+      completionHandler([.banner, .sound])
+    } else {
+      completionHandler([.alert, .sound])
     }
   }
 }

@@ -748,13 +748,17 @@ class MacStatusPill extends StatelessWidget {
             ),
             const SizedBox(width: 4.5),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-              fontFeatures: tabularFigures,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+                fontFeatures: tabularFigures,
+              ),
             ),
           ),
         ],

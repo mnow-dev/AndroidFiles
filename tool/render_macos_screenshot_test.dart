@@ -73,6 +73,13 @@ void main() {
 
       app.devices = const [device];
       app.selected = device;
+      app.wifiLink = const WifiLinkInfo(
+        linkSpeedMbps: 866,
+        frequencyMhz: 5180,
+        rssiDbm: -52,
+        standard: '11ax',
+        ssid: 'HomeWiFi-5G',
+      );
       app.volumes = const [StorageVolume.internal, sd];
       app.activeVolume = StorageVolume.internal;
       app.activeProfile = settings.profiles.first;

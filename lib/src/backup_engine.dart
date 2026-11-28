@@ -180,6 +180,7 @@ class BackupEngine extends ChangeNotifier {
   final List<BackupJob> jobs = [];
   bool _running = false;
   final Map<String, bool> _tarSupport = {};
+  String? _hiPerfSerial;
 
   /// Fired whenever the queue empties after having run at least one job.
   void Function()? onDrained;
@@ -221,6 +222,25 @@ class BackupEngine extends ChangeNotifier {
         j.cancel();
       }
     }
+    _releaseWifiHighPerf();
+  }
+
+  void _acquireWifiHighPerf(String serial) {
+    if (!AdbClient.isWireless(serial)) {
+      _releaseWifiHighPerf();
+      return;
+    }
+    if (_hiPerfSerial == serial) return;
+    _releaseWifiHighPerf();
+    _hiPerfSerial = serial;
+    unawaited(adb.setWifiHighPerf(serial, true));
+  }
+
+  void _releaseWifiHighPerf() {
+    final s = _hiPerfSerial;
+    if (s == null) return;
+    _hiPerfSerial = null;
+    unawaited(adb.setWifiHighPerf(s, false));
   }
 
   Future<void> _pump() async {
@@ -239,6 +259,7 @@ class BackupEngine extends ChangeNotifier {
         }
         if (next == null) break;
         ran++;
+        _acquireWifiHighPerf(next.serial);
         if (next.isRestore) {
           await _runRestoreJob(next);
         } else {
@@ -252,6 +273,7 @@ class BackupEngine extends ChangeNotifier {
         onJobFinished?.call(next);
       }
     } finally {
+      _releaseWifiHighPerf();
       _running = false;
       notifyListeners();
       if (ran > 0) onDrained?.call();

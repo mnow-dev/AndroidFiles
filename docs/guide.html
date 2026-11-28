@@ -123,12 +123,13 @@
     <ol>
       <li><a href="#setup">Before you start</a></li>
       <li><a href="#first">Your first backup</a></li>
+      <li><a href="#preview">Quick Look file previews</a></li>
       <li><a href="#streamed">Fast, streamed transfers</a></li>
       <li><a href="#incremental">Incremental re-runs</a></li>
       <li><a href="#clutter">Skip clutter</a></li>
       <li><a href="#layouts">Mirror &amp; Snapshot layouts</a></li>
       <li><a href="#verify">Verification</a></li>
-      <li><a href="#cleanup">Clean Up Space</a></li>
+      <li><a href="#cleanup">Clean Up Space &amp; Apps</a></li>
       <li><a href="#drive">The Explorer drive (Windows)</a></li>
       <li><a href="#restore">Restoring files</a></li>
       <li><a href="#profiles">Profiles &amp; scheduling</a></li>
@@ -172,23 +173,9 @@
 
   <figure class="fig">
     <div class="canvas">
-      <img src="screenshot.png" alt="The AndroidFiles main window: a connected phone's folder tree on the left, backup options on the right, and the queue below">
-      <span class="hl" style="left:60.3%;top:5.8%;width:20.8%;height:4.3%"><span class="mk">1</span></span>
-      <span class="hl" style="left:0.5%;top:11.8%;width:22.8%;height:39.2%"><span class="mk">2</span></span>
-      <span class="hl" style="left:41.2%;top:33.3%;width:52.5%;height:5.2%"><span class="mk">3</span></span>
-      <span class="hl" style="left:41.2%;top:39.2%;width:35.4%;height:4.6%"><span class="mk">4</span></span>
-      <span class="hl" style="left:40.0%;top:48.0%;width:58.4%;height:5.6%"><span class="mk">5</span></span>
-      <span class="hl" style="left:80.9%;top:5.8%;width:18.4%;height:4.3%"><span class="mk">6</span></span>
+      <img src="screenshot.png" alt="AndroidFiles on Windows: Windows 11 Hybrid Fluent UI with Mica sidebar, Device Folders with Last Modified and Backup Status, Backup Destination, and Transfer Queue">
     </div>
-    <ol class="legend">
-      <li><span class="mk">1</span> <strong>Device picker</strong> — choose the connected phone (USB or Wi-Fi)</li>
-      <li><span class="mk">2</span> <strong>Folder tree</strong> — tick the folders to back up</li>
-      <li><span class="mk">3</span> <strong>Destination</strong> — the folder on your PC to store the backup</li>
-      <li><span class="mk">4</span> <strong>Layout &amp; Incremental</strong> — Mirror/Snapshot, and skip-unchanged</li>
-      <li><span class="mk">5</span> <strong>Back up</strong> — start the run (label updates once folders are ticked)</li>
-      <li><span class="mk">6</span> <strong>Toolbar</strong> — refresh, mount drive, Wi-Fi, log, and Settings</li>
-    </ol>
-    <figcaption>The main window on Windows, with a Pixel connected.</figcaption>
+    <figcaption>The Windows 11 Hybrid Fluent window with a Pixel 8 connected over 5&nbsp;GHz Wi-Fi.</figcaption>
   </figure>
 
   <figure class="fig">
@@ -200,23 +187,50 @@
 
   <ol>
     <li><strong>Select your device (and storage).</strong> Once the phone is
-      connected and authorized, it appears in the device picker (or sidebar on
-      macOS). USB and wireless devices are marked with their own icons. If your
-      phone has an external microSD card mounted, a <strong>Storage</strong>
-      selector appears automatically so you can switch between
-      <code>/sdcard</code> and <code>/storage/&lt;UUID&gt;</code> — external
-      card backups land cleanly in an <code>SD-&lt;UUID&gt;</code> subfolder.</li>
-    <li><strong>Tick the folders to back up</strong> in the tree on the left —
-      for example <code>/sdcard/DCIM</code>, <code>/sdcard/Download</code>, or
-      whole <code>/sdcard</code>. Use the <em>Refresh</em> button in the
-      toolbar if the tree looks stale.</li>
-    <li><strong>Choose a destination</strong> folder on your PC in the
-      <em>Destination</em> box (or the folder-picker beside it), then press
-      <strong>Back up</strong>.</li>
+      connected and authorized, it appears in the left sidebar (with USB or
+      Wi-Fi indicator and live Wi-Fi band/speed). If your phone has an external
+      microSD card mounted, a <strong>Storage</strong> selector appears
+      automatically so you can switch between <code>/sdcard</code> and
+      <code>/storage/&lt;UUID&gt;</code> — external card backups land cleanly in
+      an <code>SD-&lt;UUID&gt;</code> subfolder.</li>
+    <li><strong>Browse, search &amp; tick folders to back up</strong> in
+      <em>Device Folders</em> — for example <code>/sdcard/DCIM</code>,
+      <code>/sdcard/Download</code>, or whole <code>/sdcard</code>. Use the
+      inline filter bar to search by filename/extension or click
+      <strong>Not backed up</strong> to isolate only unbacked, modified, or
+      partial items. Live <em>Backup Status</em> badges update automatically as
+      files finish transferring.</li>
+    <li><strong>Choose a destination</strong> folder on your computer, then
+      press <strong>Back up</strong>.</li>
   </ol>
-  <p>Each selection becomes a job in the queue on the right, with live
+  <p>Each selection becomes a job in the Transfer Queue on the right, with live
   progress, transfer speed, and an ETA. That's the whole loop — everything
   below refines it.</p>
+
+  <h2 id="preview"><span class="em">👁️</span>Quick Look file previews</h2>
+  <p>Inspect files right inside <em>Device Folders</em> or <em>Clean Up Space</em>
+  before deciding whether to back them up or delete them:</p>
+  <ul>
+    <li><strong>Press <kbd>Space</kbd></strong> on any selected file,
+      <strong>double-click</strong> it, or click the hover eye icon.</li>
+    <li><strong>Instant when already backed up</strong> — if the file already
+      exists in your local backup destination, AndroidFiles reads it directly
+      from disk with zero ADB transfer.</li>
+    <li><strong>Native macOS Quick Look window</strong> — opens a separate,
+      freely resizable, Full Screen&ndash;capable Apple <code>QLPreviewView</code>
+      window with native playback for videos &amp; audio, HEIC/RAW photos,
+      multi-page PDFs, and Office docs. Use <kbd>&larr;</kbd> / <kbd>&rarr;</kbd>
+      to step through sibling files and toggle the checkbox right from the
+      footer bar.</li>
+    <li><strong>Windows lightbox &amp; Pop Out window</strong> — pan/zoom
+      images, toggle <em>Rendered / Source</em> for Markdown and HTML,
+      <em>Formatted / Raw</em> for JSON, search inside text with
+      <kbd>Ctrl+F</kbd>, or click <strong>Pop Out</strong> for a standalone
+      resizable preview window.</li>
+    <li><strong>Large-file protection</strong> — files over 15&nbsp;MB on the
+      phone prompt before downloading so you don't accidentally pull a huge
+      video over Wi-Fi; text/code/log files stream only the first 512&nbsp;KB.</li>
+  </ul>
 
   <h2 id="streamed"><span class="em">⚡</span>Fast, streamed transfers</h2>
   <p>This is the reason the app exists, and it needs no configuration. Instead
@@ -306,7 +320,7 @@
       in Options — every run is then deep-verified as soon as it finishes.</li>
   </ul>
 
-  <h2 id="cleanup"><span class="em">✨</span>Clean Up Space</h2>
+  <h2 id="cleanup"><span class="em">✨</span>Clean Up Space &amp; Apps</h2>
   <p>Switch to <strong>Clean Up Space</strong> in the sidebar (or press
   <kbd>⌘2</kbd> on macOS) to scan your phone storage and safely reclaim space:</p>
   <ul>
@@ -317,14 +331,21 @@
       already matched in your local backup folder.</li>
     <li><strong>Large Files &amp; Folders</strong> — breaks down your biggest
       space-hog folders and lets you filter files by size (20/50/100&nbsp;MB+)
-      or videos only.</li>
+      or videos only. Press <kbd>Space</kbd> or double-click any file to Quick
+      Look it before deleting.</li>
     <li><strong>Duplicates</strong> — filters by exact byte size first, then
       MD5-hashes only matching candidates on the phone and recommends which
       original copy to keep (preferring <code>DCIM/Camera</code>).</li>
+    <li><strong>Apps</strong> — inspects per-app APK, app data, and reclaimable
+      cache storage (via <code>dumpsys diskstats</code>). Search, filter user
+      vs. system apps, sort by Total / Cache / Data / App, trigger one-click
+      <strong>Trim All Caches</strong>, open Android's App Info screen
+      directly on the phone, or clear data / uninstall user apps with
+      confirmation.</li>
     <li><strong>Back up first &amp; verify MD5</strong> — before removing any
       selected files, AndroidFiles can stream any not-yet-backed-up items to
-      your Mac and verify their MD5 hashes against the local backup. Any file
-      that fails backup or verification is kept safe on the phone.</li>
+      your computer and verify their MD5 hashes against the local backup. Any
+      file that fails backup or verification is kept safe on the phone.</li>
   </ul>
 
   <h2 id="drive"><span class="em">🗂️</span>The Explorer drive (Windows)</h2>
@@ -417,9 +438,12 @@
   just open the app and back up — cable optional.</p>
   <p>A single adb stream over Wi-Fi spends most of its time waiting for
   acknowledgements, so wireless backups are <strong>split across 8 parallel
-  streams</strong> (balanced by size). In testing that took a Pixel 8 from about
-  5 MB/s to 16 MB/s. USB transfers stay single-stream; they are already
-  limited by storage, not the cable.</p>
+  streams</strong> (balanced by size) and hold Android's <strong>Wi-Fi
+  high-performance lock</strong> while transferring so the phone radio doesn't
+  drop into power-save mid-backup. The sidebar also displays your phone's live
+  <strong>Wi-Fi band &amp; link speed</strong> (e.g. <code>5 GHz · 866 Mbps</code>)
+  and highlights slow <code>2.4 GHz</code> links in amber so you can spot
+  router bottlenecks immediately.</p>
 
   <h2 id="settings">Settings &amp; updates</h2>
   <p>The <strong>gear</strong> icon in the toolbar opens Settings:</p>

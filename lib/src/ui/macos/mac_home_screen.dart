@@ -139,6 +139,10 @@ class _MacHomeScreenState extends State<MacHomeScreen> {
                 const PlatformProvidedMenuItem(
                   type: PlatformProvidedMenuItemType.about,
                 ),
+                PlatformMenuItem(
+                  label: 'Check for Updates…',
+                  onSelected: () => showMacCheckUpdatesFlow(context, app),
+                ),
                 PlatformMenuItemGroup(
                   members: [
                     PlatformMenuItem(

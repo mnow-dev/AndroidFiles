@@ -100,6 +100,19 @@ class AdbClient {
     }
   }
 
+  /// Request Android's Wi-Fi high-performance mode during wireless transfers so
+  /// the phone radio doesn't throttle into power-save mid-backup (Android 11+,
+  /// best-effort; silently ignored if unsupported).
+  Future<void> setWifiHighPerf(String serial, bool enabled) async {
+    try {
+      await _shell(
+        serial,
+        'cmd wifi force-hi-perf-mode ${enabled ? 'enabled' : 'disabled'}',
+        timeout: const Duration(seconds: 4),
+      );
+    } catch (_) {}
+  }
+
   /// Parse `cmd wifi status` or `dumpsys wifi` output into a [WifiLinkInfo].
   static WifiLinkInfo? parseWifiLinkInfo(String raw) {
     if (raw.trim().isEmpty) return null;

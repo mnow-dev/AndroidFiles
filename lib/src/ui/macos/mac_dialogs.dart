@@ -77,6 +77,9 @@ Future<void> showMacSettingsDialog(
     text: app.settings.clutterPatterns.join('\n'),
   );
   final scrollController = ScrollController();
+  var checkUpdates = app.settings.checkForUpdates;
+  var checkingUpdate = false;
+  String? updateCheckStatus;
   String? testResult;
 
   await _showMacModal<void>(
@@ -274,6 +277,66 @@ Future<void> showMacSettingsDialog(
                         ],
                       ),
                     ]),
+                    group(l.settingsUpdates, [
+                      Row(
+                        children: [
+                          MacCheckbox(
+                            checked: checkUpdates,
+                            onTap: () =>
+                                setState(() => checkUpdates = !checkUpdates),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => checkUpdates = !checkUpdates),
+                              child: Text(
+                                l.checkUpdatesLabel,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: p.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          MacPushButton(
+                            onPressed: checkingUpdate
+                                ? null
+                                : () async {
+                                    setState(() {
+                                      checkingUpdate = true;
+                                      updateCheckStatus = null;
+                                    });
+                                    final info =
+                                        await app.checkForUpdatesNow();
+                                    if (!ctx.mounted) return;
+                                    setState(() {
+                                      checkingUpdate = false;
+                                      updateCheckStatus = info == null
+                                          ? 'Up to date (v$appVersion)'
+                                          : 'Update v${info.version} available';
+                                    });
+                                    if (info != null) {
+                                      await showMacUpdateDialog(ctx, app);
+                                    }
+                                  },
+                            child: Text(
+                              checkingUpdate ? 'Checking…' : 'Check Now',
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (updateCheckStatus != null) ...[
+                        const SizedBox(height: 5),
+                        Text(
+                          updateCheckStatus!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: p.green,
+                          ),
+                        ),
+                      ],
+                    ]),
                     group(l.settingsAbout, [
                       Row(
                         children: [
@@ -332,6 +395,7 @@ Future<void> showMacSettingsDialog(
               height: 28,
               onPressed: () {
                 app.settings.adbPath = adbPath.text.trim();
+                app.settings.checkForUpdates = checkUpdates;
                 app.settings.clutterPatterns = clutterPatterns.text
                     .split('\n')
                     .map((s) => s.trim())
@@ -885,16 +949,23 @@ Future<void> showMacUpdateDialog(
         return MacDialogFrame(
           title: l.updateAvailable(info.version),
           subtitle: l.runningCurrent(appVersion),
-          maxWidth: 380,
+          maxWidth: 400,
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (app.updateError != null && !installing)
+              if (Platform.isMacOS && !installing)
+                Text(
+                  'A newer macOS release is available on GitHub Releases (.dmg).',
+                  style: TextStyle(fontSize: 12, color: p.textSecondary),
+                ),
+              if (app.updateError != null && !installing) ...[
+                const SizedBox(height: 6),
                 Text(
                   l.updateFailed,
                   style: TextStyle(fontSize: 12, color: p.red),
                 ),
+              ],
               if (installing) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
@@ -943,12 +1014,48 @@ Future<void> showMacUpdateDialog(
                   MacPrimaryButton(
                     expand: false,
                     height: 28,
-                    onPressed: app.installUpdate,
-                    child: Text(l.updateButton),
+                    onPressed: () async {
+                      await app.installUpdate();
+                      if (Platform.isMacOS && ctx.mounted) {
+                        Navigator.pop(ctx);
+                      }
+                    },
+                    child: Text(
+                      Platform.isMacOS ? 'Download Update' : l.updateButton,
+                    ),
                   ),
                 ],
         );
       },
+    ),
+  );
+}
+
+Future<void> showMacCheckUpdatesFlow(
+  BuildContext context,
+  AppController app,
+) async {
+  final info = await app.checkForUpdatesNow();
+  if (!context.mounted) return;
+  if (info != null) {
+    await showMacUpdateDialog(context, app);
+    return;
+  }
+  await _showMacModal<void>(
+    context,
+    (ctx) => MacDialogFrame(
+      title: 'AndroidFiles is up to date',
+      subtitle: 'You are running v$appVersion — the latest version.',
+      maxWidth: 360,
+      content: const SizedBox.shrink(),
+      actions: [
+        MacPrimaryButton(
+          expand: false,
+          height: 28,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('OK'),
+        ),
+      ],
     ),
   );
 }

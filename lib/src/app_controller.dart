@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/widgets.dart' show Locale, TextEditingController;
 import 'package:local_notifier/local_notifier.dart';
 
@@ -163,6 +164,21 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Manually check GitHub Releases for a newer version. Returns the newer
+  /// [UpdateInfo] if found, or `null` if already on the latest version (or
+  /// offline).
+  Future<UpdateInfo?> checkForUpdatesNow() async {
+    final info = await UpdateChecker.latestIfNewer();
+    if (info != null) {
+      update = info;
+      log('Update available: ${info.version} (running $appVersion)');
+      notifyListeners();
+    } else {
+      log('AndroidFiles v$appVersion is up to date');
+    }
+    return info;
+  }
+
   void dismissUpdate() {
     update = null;
     notifyListeners();
@@ -289,7 +305,18 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  static const _macNotifChannel = MethodChannel('androidfiles/notifications');
+
   void _notify(String title, String body) {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (Platform.isMacOS) {
+      unawaited(
+        _macNotifChannel
+            .invokeMethod<bool>('show', {'title': title, 'body': body})
+            .catchError((_) => false),
+      );
+      return;
+    }
     LocalNotification(title: title, body: body).show();
   }
 

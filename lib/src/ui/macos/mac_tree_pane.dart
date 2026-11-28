@@ -8,6 +8,7 @@ import '../../app_controller.dart';
 import '../../backup_engine.dart' show fmtBytes;
 import '../../models.dart';
 import '../../preview_service.dart';
+import '../../tree_filter.dart';
 import '../quick_look_dialog.dart';
 import '../win_theme.dart' show formatShortModified;
 import 'mac_dialogs.dart';
@@ -28,13 +29,21 @@ class _MacTreePaneState extends State<MacTreePane> {
   AppController get app => widget.app;
   final _scroll = ScrollController();
   final _treeFocus = FocusNode();
+  final _searchController = TextEditingController();
   bool _dragging = false;
+  bool _onlyUnbackedUp = false;
   String? _focusedFilePath;
+
+  TreeFilter get _filter => TreeFilter(
+        query: _searchController.text,
+        onlyUnbackedUp: _onlyUnbackedUp,
+      );
 
   @override
   void dispose() {
     _scroll.dispose();
     _treeFocus.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -116,6 +125,7 @@ class _MacTreePaneState extends State<MacTreePane> {
         builder: (context, constraints) {
           final showModified = constraints.maxWidth >= 430;
           final showStatus = constraints.maxWidth >= 340;
+          final filter = _filter;
           final rows = <Widget>[];
           _buildRows(
             context,
@@ -124,7 +134,9 @@ class _MacTreePaneState extends State<MacTreePane> {
             rows,
             showModified: showModified,
             showStatus: showStatus,
+            filter: filter,
           );
+          final isLoadingRoot = app.loading.contains(app.activeRootPath);
           return Container(
             color: _dragging ? p.greenSoft : p.windowBg,
             child: Column(
@@ -171,6 +183,112 @@ class _MacTreePaneState extends State<MacTreePane> {
                             ),
                           ),
                         ),
+                    ],
+                  ),
+                ),
+                // Search & status filter strip
+                Container(
+                  height: 34,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: p.windowBg,
+                    border: Border(
+                      bottom: BorderSide(color: p.border, width: 0.75),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: CupertinoTextField(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          placeholder: 'Filter files or folders…',
+                          placeholderStyle: TextStyle(
+                            fontSize: 11.5,
+                            color: p.textTertiary,
+                          ),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: p.textPrimary,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          prefix: Padding(
+                            padding: const EdgeInsets.only(left: 7),
+                            child: Icon(
+                              CupertinoIcons.search,
+                              size: 12.5,
+                              color: p.textTertiary,
+                            ),
+                          ),
+                          suffix: _searchController.text.isEmpty
+                              ? null
+                              : GestureDetector(
+                                  onTap: () {
+                                    _searchController.clear();
+                                    setState(() {});
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: Icon(
+                                      CupertinoIcons.clear_thick_circled,
+                                      size: 13,
+                                      color: p.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                          decoration: BoxDecoration(
+                            color: p.controlBg,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: p.border, width: 0.75),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message:
+                            'Show only items not yet backed up, modified, or partial',
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => setState(
+                              () => _onlyUnbackedUp = !_onlyUnbackedUp,
+                            ),
+                            child: Container(
+                              height: 24,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 9),
+                              decoration: BoxDecoration(
+                                color: _onlyUnbackedUp
+                                    ? p.greenSoft
+                                    : p.segTrack,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: _onlyUnbackedUp
+                                      ? p.green.withValues(alpha: 0.55)
+                                      : p.border,
+                                  width: 0.75,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'Not backed up',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: _onlyUnbackedUp
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: _onlyUnbackedUp
+                                      ? p.green
+                                      : p.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -224,15 +342,44 @@ class _MacTreePaneState extends State<MacTreePane> {
                     ),
                   ),
                 Expanded(
-                  child: CupertinoScrollbar(
-                    controller: _scroll,
-                    thumbVisibility: true,
-                    child: ListView(
-                      controller: _scroll,
-                      padding: const EdgeInsets.all(6),
-                      children: rows,
-                    ),
-                  ),
+                  child: filter.isActive && rows.isEmpty && !isLoadingRoot
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                CupertinoIcons.search,
+                                size: 22,
+                                color: p.textTertiary,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'No matching files or folders',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: p.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              MacPushButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _onlyUnbackedUp = false);
+                                },
+                                child: const Text('Clear filter'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : CupertinoScrollbar(
+                          controller: _scroll,
+                          thumbVisibility: true,
+                          child: ListView(
+                            controller: _scroll,
+                            padding: const EdgeInsets.all(6),
+                            children: rows,
+                          ),
+                        ),
                 ),
                 // Bottom drop-zone & item count strip
                 Container(
@@ -261,7 +408,17 @@ class _MacTreePaneState extends State<MacTreePane> {
                           ),
                         ),
                       ),
-                      if (rootItems > 0) ...[
+                      if (filter.isActive) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '${rows.length} matching',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: p.green,
+                            fontFeatures: tabularFigures,
+                          ),
+                        ),
+                      ] else if (rootItems > 0) ...[
                         const SizedBox(width: 8),
                         Text(
                           '$rootItems items',
@@ -291,6 +448,8 @@ class _MacTreePaneState extends State<MacTreePane> {
     List<Widget> out, {
     required bool showModified,
     required bool showStatus,
+    required TreeFilter filter,
+    bool ancestorMatchedQuery = false,
   }) {
     if (!app.expanded.contains(path)) return;
     if (app.loading.contains(path)) {
@@ -317,6 +476,14 @@ class _MacTreePaneState extends State<MacTreePane> {
       return;
     }
     for (final e in app.children[path] ?? const <RemoteEntry>[]) {
+      if (!filter.matches(
+        e,
+        statuses: app.entryBackupStatus,
+        children: app.children,
+        ancestorMatchedQuery: ancestorMatchedQuery,
+      )) {
+        continue;
+      }
       out.add(_MacTreeRow(
         app: app,
         entry: e,
@@ -340,6 +507,9 @@ class _MacTreePaneState extends State<MacTreePane> {
           out,
           showModified: showModified,
           showStatus: showStatus,
+          filter: filter,
+          ancestorMatchedQuery:
+              ancestorMatchedQuery || filter.nameMatchesQuery(e),
         );
       }
     }
